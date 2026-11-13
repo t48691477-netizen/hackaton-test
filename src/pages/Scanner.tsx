@@ -1,11 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type FormEvent,
-} from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Camera,
   CameraOff,
@@ -17,10 +11,13 @@ import {
   Gauge,
   Info,
   Loader2,
+  Maximize2,
+  Minimize2,
   MousePointer2,
   RefreshCw,
   RotateCcw,
   Send,
+  SwitchCamera,
   Upload,
   Wrench,
 } from 'lucide-react';
@@ -41,6 +38,7 @@ import {
   type Severity,
   type SpecItem,
 } from '../lib/inspection';
+import { useFocusTrap } from '../lib/useFocusTrap';
 
 type ScannerStatus = 'starting' | 'live' | 'ready' | 'error';
 
@@ -708,7 +706,9 @@ function LiveReport({
 
         <div className="mt-4 border-l-2 border-accent pl-3 sm:mt-5 sm:pl-4">
           <p className="technical">Сводка</p>
-          <p className="mt-2 text-sm leading-6 text-soft">{analysis.summary}</p>
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-soft sm:line-clamp-none">
+            {analysis.summary}
+          </p>
         </div>
 
         <section
@@ -735,7 +735,10 @@ function LiveReport({
           </div>
 
           {mockSpecs ? (
-            <p id="equipment-specs-source" className="mt-2 text-[10px] leading-4 text-faint">
+            <p
+              id="equipment-specs-source"
+              className="mt-2 hidden text-[10px] leading-4 text-faint sm:block"
+            >
               Демо-характеристики узла. После подключения backend здесь будут его
               характеристики, не замеры дефекта.
             </p>
@@ -904,7 +907,7 @@ function LiveReport({
           <p className="mt-2 text-xs leading-5 text-soft">
             {analysis.llm.probable_cause}
           </p>
-          <p className="mt-1.5 text-[10px] leading-4 text-faint">
+          <p className="mt-1.5 hidden text-[10px] leading-4 text-faint sm:block">
             Рекомендация относится к повреждённому узлу и передаётся сотруднику
             вместе с задачей.
           </p>
@@ -930,8 +933,8 @@ function LiveReport({
 
         <p className="mt-3 text-[10px] leading-4 text-faint">
           {API_CONFIG.useMock
-            ? 'Демо-результат. При интеграции заменится ответом POST /api/inspect.'
-            : 'Результат получен от backend. Не использовать как основание для ремонта без проверки инженером.'}
+            ? 'Демо-режим: распознавание симулируется на устройстве.'
+            : 'Результат backend. Не основание для ремонта без проверки инженером.'}
         </p>
 
         <div className="mt-5 border-t border-line pt-4">
@@ -985,10 +988,8 @@ function EmptyReport({ status }: { status: ScannerStatus }) {
           Здесь появятся характеристики
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          Наведите камеру на оборудование. Распознавание начнётся автоматически,
-          без отдельной кнопки. После распознавания наведите курсор на дефект,
-          выберите его клавишей Tab или нажмите — здесь откроются технические
-          характеристики узла.
+          Наведите камеру на оборудование — распознавание начнётся само.
+          Нажмите на дефект, чтобы открыть характеристики узла.
         </p>
 
         <dl className="mt-6 divide-y divide-line border-y border-line">
@@ -1018,6 +1019,141 @@ function EmptyReport({ status }: { status: ScannerStatus }) {
   );
 }
 
+interface FullscreenCameraViewProps {
+  status: ScannerStatus;
+  error: string | null;
+  analysis: InspectionResult | null;
+  activeDefectId: string | null;
+  selectedDefectId: string | null;
+  frontCamera: boolean;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  streamRef: RefObject<MediaStream | null>;
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  onHover: (id: string | null) => void;
+  onFocus: (id: string | null) => void;
+  onSelect: (id: string) => void;
+  onToggleCamera: () => void;
+  onRetry: () => void;
+  onClose: () => void;
+}
+
+/**
+ * Полноэкранный просмотр камеры. Рендерится в body: страница обёрнута
+ * в `animate-page-in` с transform, из-за которого `fixed` внутри неё
+ * позиционировался бы относительно страницы, а не окна.
+ */
+function FullscreenCameraView({
+  status,
+  error,
+  analysis,
+  activeDefectId,
+  selectedDefectId,
+  frontCamera,
+  videoRef,
+  streamRef,
+  triggerRef,
+  onHover,
+  onFocus,
+  onSelect,
+  onToggleCamera,
+  onRetry,
+  onClose,
+}: FullscreenCameraViewProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(dialogRef, {
+    initialFocus: '[data-camera-fullscreen-close]',
+    onEscape: onClose,
+    restoreFocus: () => triggerRef.current?.focus(),
+  });
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  // В портале элемент video монтируется заново — возвращаем на него поток.
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+
+    if (video && stream && video.srcObject !== stream) {
+      video.srcObject = stream;
+      void video.play().catch(() => {});
+    }
+  }, [streamRef, videoRef]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] bg-black">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Камера на весь экран"
+        className="relative h-full w-full"
+      >
+        {status === 'error' ? (
+          <CameraError message={error} onRetry={onRetry} onUpload={onClose} />
+        ) : (
+          <>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`h-full w-full object-cover ${
+                frontCamera ? 'scale-x-[-1]' : ''
+              }`}
+              aria-label="Видеопоток с камеры"
+            />
+            {status === 'live' ? <div className="scanline" /> : null}
+            {!analysis ? <CameraGuide /> : null}
+            {analysis ? (
+              <DefectOverlay
+                analysis={analysis}
+                activeId={activeDefectId}
+                selectedId={selectedDefectId}
+                onHover={onHover}
+                onFocus={onFocus}
+                onSelect={onSelect}
+              />
+            ) : null}
+          </>
+        )}
+
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleCamera}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center border border-white/30 bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/75"
+            aria-label={
+              frontCamera
+                ? 'Включить основную камеру'
+                : 'Включить фронтальную камеру'
+            }
+          >
+            <SwitchCamera className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            data-camera-fullscreen-close
+            className="inline-flex min-h-11 min-w-11 items-center justify-center border border-white/30 bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/75"
+            aria-label="Свернуть камеру"
+          >
+            <Minimize2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function Scanner() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -1038,6 +1174,15 @@ export function Scanner() {
   const [engineers, setEngineers] = useState<Employee[]>(() =>
     getEngineers(loadEmployees()),
   );
+  // Фронтальная / основная камера. Состояние ведёт кнопка; facingMode
+  // передаётся только при явном выборе — так настольный браузер без задней
+  // камеры не падает с OverconstrainedError.
+  const [frontCamera, setFrontCamera] = useState(false);
+  const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+  const fullscreenTriggerRef = useRef<HTMLButtonElement>(null);
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     const refresh = () => setEngineers(getEngineers(loadEmployees()));
@@ -1063,67 +1208,84 @@ export function Scanner() {
     }
   }, []);
 
-  const startCamera = useCallback(async () => {
-    const requestId = ++requestIdRef.current;
-
-    stopStream();
-    setError(null);
-    setSnapshot(null);
-    setAnalysis(null);
-    setHoveredDefectId(null);
-    setFocusedDefectId(null);
-    setSelectedDefectId(null);
-    setLiveError(null);
-    imageBlobRef.current = null;
-    setStatus('starting');
-    tickRef.current = 0;
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setStatus('error');
-      setError(
-        'Браузер не поддерживает доступ к камере. Откройте страницу в современном браузере или загрузите фотографию.',
-      );
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      });
-
-      if (requestId !== requestIdRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-
-      const video = videoRef.current;
-      if (!video) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-
-      streamRef.current = stream;
-      video.srcObject = stream;
-      await video.play();
-
-      if (requestId === requestIdRef.current) {
-        setStatus('live');
-      }
-    } catch (cameraError) {
-      if (requestId !== requestIdRef.current) {
-        return;
-      }
+  const startCamera = useCallback(
+    async (nextFrontCamera = frontCamera) => {
+      const requestId = ++requestIdRef.current;
 
       stopStream();
-      setStatus('error');
-      setError(describeCameraError(cameraError));
-    }
-  }, [stopStream]);
+      setError(null);
+      setSnapshot(null);
+      setAnalysis(null);
+      setHoveredDefectId(null);
+      setFocusedDefectId(null);
+      setSelectedDefectId(null);
+      setLiveError(null);
+      imageBlobRef.current = null;
+      setVideoSize(null);
+      setStatus('starting');
+      tickRef.current = 0;
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setStatus('error');
+        setError(
+          'Браузер не поддерживает доступ к камере. Откройте страницу в современном браузере или загрузите фотографию.',
+        );
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode:
+              nextFrontCamera !== undefined
+                ? { ideal: nextFrontCamera ? 'user' : 'environment' }
+                : undefined,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+
+        if (requestId !== requestIdRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        const video = videoRef.current;
+        if (!video) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+        video.srcObject = stream;
+        await video.play();
+
+        // Пропорции контейнера берём из реального потока, а не из жёсткого
+        // 16:9: на телефоне вертикальный поток иначе обрезается по краям.
+        const track = stream.getVideoTracks?.()[0];
+        const settings = track?.getSettings?.() ?? {};
+
+        setVideoSize({
+          width: settings.width || video.videoWidth || 1280,
+          height: settings.height || video.videoHeight || 720,
+        });
+
+        if (requestId === requestIdRef.current) {
+          setStatus('live');
+        }
+      } catch (cameraError) {
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+
+        stopStream();
+        setStatus('error');
+        setError(describeCameraError(cameraError));
+      }
+    },
+    [frontCamera, stopStream],
+  );
 
   useEffect(() => {
     void startCamera();
@@ -1237,6 +1399,24 @@ export function Scanner() {
       }
     };
   }, [snapshot, status]);
+
+  const handleToggleCamera = useCallback(() => {
+    setFrontCamera((current) => !current);
+    void startCamera(!frontCamera);
+  }, [frontCamera, startCamera]);
+
+  // Поток хранится в ref и не зависит от того, где сейчас смонтирован
+  // элемент video (обычный экран или полноэкранный): при каждой отрисовке
+  // возвращаем камеру на место.
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+
+    if (video && stream && video.srcObject !== stream) {
+      video.srcObject = stream;
+      void video.play().catch(() => {});
+    }
+  });
 
   const handleReset = useCallback(() => {
     setSnapshot(null);
@@ -1365,27 +1545,64 @@ export function Scanner() {
                 CAM 01
               </span>
               <span className="text-faint">
-                / {snapshot ? 'снимок' : 'поток'}
+                / {snapshot ? 'снимок' : frontCamera ? 'фронтальная' : 'основная'}
               </span>
-              <span className="hidden text-faint sm:inline">/ 1280 × 720</span>
+              {videoSize ? (
+                <span className="hidden text-faint sm:inline">
+                  / {videoSize.width} × {videoSize.height}
+                </span>
+              ) : null}
             </div>
 
-            <button
-              type="button"
-              onClick={handleReset}
-              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 px-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted transition-colors hover:text-ink"
-            >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-              Сбросить
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              {!snapshot ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleToggleCamera}
+                    disabled={status === 'starting'}
+                    className="inline-flex min-h-11 items-center gap-1.5 px-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label={
+                      frontCamera
+                        ? 'Включить основную камеру'
+                        : 'Включить фронтальную камеру'
+                    }
+                  >
+                    <SwitchCamera className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="hidden sm:inline">Камера</span>
+                  </button>
+                  <button
+                    ref={fullscreenTriggerRef}
+                    type="button"
+                    onClick={() => setFullscreen(true)}
+                    className="inline-flex min-h-11 items-center gap-1.5 px-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted transition-colors hover:text-ink"
+                    aria-label="Развернуть камеру на весь экран"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="hidden sm:inline">На весь экран</span>
+                  </button>
+                </>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={handleReset}
+                className="inline-flex min-h-11 shrink-0 items-center gap-1.5 px-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted transition-colors hover:text-ink"
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                Сбросить
+              </button>
+            </div>
           </div>
 
           <div
-            className="relative aspect-video max-h-[min(52vh,440px)] w-full overflow-hidden border border-line bg-black"
+            className={`relative aspect-video w-full max-h-[min(52vh,440px)] overflow-hidden border border-line bg-black lg:max-h-[min(60vh,520px)]`}
             style={
               snapshot
                 ? { aspectRatio: `${snapshot.width} / ${snapshot.height}` }
-                : undefined
+                : videoSize
+                  ? { aspectRatio: `${videoSize.width} / ${videoSize.height}` }
+                  : undefined
             }
           >
             {snapshot ? (
@@ -1400,13 +1617,15 @@ export function Scanner() {
                 onRetry={() => void startCamera()}
                 onUpload={() => fileInputRef.current?.click()}
               />
-            ) : (
+            ) : fullscreen ? null : (
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className="h-full w-full object-cover"
+                className={`h-full w-full object-cover ${
+                  frontCamera ? 'scale-x-[-1]' : ''
+                }`}
                 aria-label="Видеопоток с камеры"
               />
             )}
@@ -1516,6 +1735,26 @@ export function Scanner() {
           )}
         </aside>
       </div>
+
+      {fullscreen && !snapshot ? (
+        <FullscreenCameraView
+          status={status}
+          error={error}
+          analysis={analysis}
+          activeDefectId={activeDefect?.id ?? null}
+          selectedDefectId={selectedDefectId}
+          frontCamera={frontCamera}
+          videoRef={videoRef}
+          streamRef={streamRef}
+          triggerRef={fullscreenTriggerRef}
+          onHover={setHoveredDefectId}
+          onFocus={setFocusedDefectId}
+          onSelect={setSelectedDefectId}
+          onToggleCamera={handleToggleCamera}
+          onRetry={() => void startCamera()}
+          onClose={() => setFullscreen(false)}
+        />
+      ) : null}
 
       <section className="border-t border-line" aria-label="Как это работает">
         <button

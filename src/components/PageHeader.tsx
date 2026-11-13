@@ -46,8 +46,8 @@ export function PageHeader({
             className={[
               'text-muted',
               compact
-                ? 'mt-2.5 max-w-3xl text-sm leading-6'
-                : 'mt-4 max-w-2xl text-[15px] leading-7',
+                ? 'mt-2.5 max-w-3xl text-sm leading-6 line-clamp-2 sm:line-clamp-none'
+                : 'mt-4 max-w-2xl text-[15px] leading-7 line-clamp-2 sm:line-clamp-none',
             ].join(' ')}
           >
             {description}

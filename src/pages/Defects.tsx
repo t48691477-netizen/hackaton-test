@@ -212,9 +212,7 @@ export function Defects() {
             >
               Последние дефекты
             </h2>
-            <p className="mt-1.5 text-sm text-muted">
-              Сортировка по времени обнаружения. Время указано в UTC.
-            </p>
+            <p className="mt-1.5 text-sm text-muted">Время указано в UTC.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -484,7 +482,7 @@ export function Defects() {
         </div>
         )}
 
-        <p className="mt-3 text-[11px] text-faint" data-mock="assignee-note">
+        <p className="mt-3 hidden text-[11px] text-faint sm:block" data-mock="assignee-note">
           {API_CONFIG.useMock ? 'Демо-данные API. ' : ''}
           Исполнитель приходит из задачи. «Не назначен» — только для задач без назначения.
         </p>
