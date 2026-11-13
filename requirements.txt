@@ -1,0 +1,11 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+pydantic>=2.7.0
+ultralytics>=8.2.0
+torch>=2.2.0
+torchvision>=0.17.0
+huggingface-hub>=0.22.0
+opencv-python>=4.9.0
+pillow>=10.2.0
+python-multipart>=0.0.9
+requests>=2.31.0

@@ -7,6 +7,27 @@ dist/
 .taste-skill/chrome-check/
 .taste-skill/shots/
 
+# Android and IDE output
+.gradle/
+.kotlin/
+app/build/
+*.hprof
+local.properties
+keystore.properties
+*.jks
+*.keystore
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# TOiR local data and model weights
+data/*.db
+weights/*.pt
+static/uploads/*.jpg
+!static/uploads/sample_test.jpg
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -24,7 +45,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
