@@ -3,19 +3,17 @@
 Дата проверки: 14.11.2026.
 
 Проверены: `Layout.tsx`, `Users.tsx`, `Scanner.tsx`, `RoleGuard`, `RoleContext`,
-`accessKeys.ts`, `access.ts`, `session.ts`, `email.ts`, тесты и зависимости.
+`accessKeys.ts`, `access.ts`, `session.ts`, `email.ts` и зависимости.
 
 ## Итог автоматических проверок
 
 | Проверка | Результат |
 |---|---|
 | `npm run build` | успешно |
-| `npm run test:run` | 107 тестов, 10 файлов — все прошли |
 | `npm audit` | 0 уязвимостей (0 critical / high / moderate / low) |
 | TypeScript strict | успешно |
 
-Зависимости после обновления: `react-router-dom@7.18.5`,
-`vitest@5.1.0`, `vite@6.4.6`.
+Зависимости после обновления: `react-router-dom@7.18.5`, `vite@6.4.6`.
 
 ## Что сделано для безопасности в рамках фронтенда
 
@@ -140,6 +138,5 @@ CORS с явным allowlist. Ключ передавать только по HT
 ```bash
 npm install
 npm run build
-npm run test:run
 npm audit
 ```

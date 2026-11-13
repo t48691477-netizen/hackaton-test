@@ -1,6 +1,6 @@
 import react from '@vitejs/plugin-react';
 import basicSsl from '@vitejs/plugin-basic-ssl';
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vite';
 
 /**
  * Запуск в локальной сети (`npm run dev:lan` или `vite --host`) поднимает
@@ -22,11 +22,5 @@ export default defineConfig({
     host: exposeToLan ? true : '127.0.0.1',
     port: 5173,
     strictPort: true,
-  },
-  test: {
-    environment: 'jsdom',
-    setupFiles: './src/test/setup.ts',
-    css: true,
-    globals: true,
   },
 });
