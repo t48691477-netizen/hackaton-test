@@ -104,8 +104,6 @@
 
 ## 4. `GET /api/reports`
 
-Для проверки на защите, что акты реально сохранены:
-
 ```json
 { "reports": [ { "report_id": "ACT-261113-A1B2", "equipment_id": "PUMP-402", "status": "parts_required" } ] }
 ```
@@ -113,10 +111,33 @@
 ## 5. `GET /api/health`
 
 ```json
-{ "status": "ok", "time": "2026-11-13T10:42:00Z" }
+{ "status": "ok", "mode": "live", "model": "gpt-4o-mini", "time": "2026-11-13T10:42:00Z" }
 ```
+
+`mode`: `mock` | `live`. Приложение показывает `LIVE AI` при `live`,
+`DEMO` при `mock`. Подробнее — [`LIVE_AI.md`](LIVE_AI.md).
+
+## 6. `POST /api/chat` — ассистент «Моттэл»
+
+```json
+{
+  "message": "Что делать с находками?",
+  "equipment_id": "PUMP-402",
+  "history": [
+    { "role": "user", "text": "…" },
+    { "role": "mottel", "text": "…" }
+  ]
+}
+```
+
+```json
+{ "reply": "Начинай с фланца №3: …", "model": "gpt-4o-mini" }
+```
+
+`model` в mock-режиме — `mock-assistant`. История обрезается последними 8 репликами.
 
 ## Поведение при недоступном бэкенде
 
 Приложение **никогда не падает** из-за сети: при ошибке/Live-режиме выключенном
-ответ собирается локально (`DemoData.kt`), а в HUD появляется бейдж `DEMO`.
+ответ собирается локально (`DemoData.kt`, `MottelScript.kt`), а в HUD появляется
+бейдж `DEMO`.

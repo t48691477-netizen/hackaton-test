@@ -106,6 +106,29 @@ class EquipmentRepository(
                 }
         }
 
+    /** Статус сервера: mock или live (реальная vision/LLM-модель на бэкенде). */
+    suspend fun health(): Fetched<HealthResponse> = withContext(Dispatchers.IO) {
+        if (settings.demoMode) {
+            return@withContext Fetched(HealthResponse("ok", "mock", "demo-data"), fromDemo = true)
+        }
+        runCatching { api().health() }
+            .map { Fetched(it, fromDemo = false) }
+            .getOrElse { Fetched(HealthResponse("offline", "mock", null), fromDemo = true) }
+    }
+
+    suspend fun chat(request: ChatRequest): Fetched<ChatResponse> = withContext(Dispatchers.IO) {
+        if (settings.demoMode) {
+            delay(550)
+            return@withContext Fetched(ChatResponse(MottelScript.reply(request.message), "demo"), true)
+        }
+        runCatching { api().chat(request) }
+            .map { Fetched(it, fromDemo = false) }
+            .getOrElse {
+                delay(300)
+                Fetched(ChatResponse(MottelScript.reply(request.message), "offline"), true)
+            }
+    }
+
     private fun mockReport(request: ReportRequest): ReportResponse {
         val suffix = (System.currentTimeMillis() % 1_000_000).toString().padStart(6, '0')
         return ReportResponse(

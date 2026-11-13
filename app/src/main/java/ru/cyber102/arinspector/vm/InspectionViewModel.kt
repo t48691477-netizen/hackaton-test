@@ -11,9 +11,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.cyber102.arinspector.data.AppSettings
+import ru.cyber102.arinspector.data.ChatRequest
+import ru.cyber102.arinspector.data.ChatTurn
 import ru.cyber102.arinspector.data.Defect
 import ru.cyber102.arinspector.data.Equipment
 import ru.cyber102.arinspector.data.EquipmentRepository
+import ru.cyber102.arinspector.data.HealthResponse
 import ru.cyber102.arinspector.data.InspectResponse
 import ru.cyber102.arinspector.data.QrParser
 import ru.cyber102.arinspector.data.ReportRequest
@@ -54,7 +57,66 @@ class InspectionViewModel(application: Application) : AndroidViewModel(applicati
     private val _reporting = MutableStateFlow(false)
     val reporting: StateFlow<Boolean> = _reporting.asStateFlow()
 
+    private val _assistantOpen = MutableStateFlow(false)
+    val assistantOpen: StateFlow<Boolean> = _assistantOpen.asStateFlow()
+
+    private val _chat = MutableStateFlow(
+        listOf(
+            ChatTurn(
+                role = "mottel",
+                text = "Моттэл на связи. Я инженерный ассистент: разберу находки, " +
+                    "соберу список запчастей, подскажу по акту."
+            )
+        )
+    )
+    val chat: StateFlow<List<ChatTurn>> = _chat.asStateFlow()
+
+    private val _chatBusy = MutableStateFlow(false)
+    val chatBusy: StateFlow<Boolean> = _chatBusy.asStateFlow()
+
+    private val _serverHealth = MutableStateFlow<HealthResponse?>(null)
+    val serverHealth: StateFlow<HealthResponse?> = _serverHealth.asStateFlow()
+
     val currentBaseUrl: String get() = settings.normalizedBaseUrl()
+
+    fun refreshHealth() {
+        viewModelScope.launch {
+            val result = repository.health()
+            _serverHealth.value = result.data
+            Log.i(
+                TAG,
+                "health: mode=${result.data.mode} model=${result.data.model} demo=${result.fromDemo}"
+            )
+        }
+    }
+
+    fun openAssistant() {
+        _assistantOpen.value = true
+        refreshHealth()
+    }
+
+    fun closeAssistant() {
+        _assistantOpen.value = false
+    }
+
+    fun askAssistant(question: String) {
+        val text = question.trim()
+        if (text.isEmpty() || _chatBusy.value) return
+        viewModelScope.launch {
+            _chatBusy.value = true
+            _chat.value = _chat.value + ChatTurn("user", text)
+            val result = repository.chat(
+                ChatRequest(
+                    message = text,
+                    equipmentId = _equipment.value?.id,
+                    history = _chat.value.takeLast(8)
+                )
+            )
+            _chat.value = _chat.value + ChatTurn("mottel", result.data.reply)
+            _chatBusy.value = false
+            Log.i(TAG, "chat: model=${result.data.model} demo=${result.fromDemo}")
+        }
+    }
 
     fun loadEquipment(raw: String) {
         val id = QrParser.equipmentId(raw)

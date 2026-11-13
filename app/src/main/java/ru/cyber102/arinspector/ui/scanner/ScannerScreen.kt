@@ -32,11 +32,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
@@ -45,6 +46,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -74,11 +76,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.cyber102.arinspector.data.DemoData
-import ru.cyber102.arinspector.data.Equipment
+import ru.cyber102.arinspector.ui.assistant.AssistantSheet
 import ru.cyber102.arinspector.ui.components.HudPanel
 import ru.cyber102.arinspector.ui.components.MonoLabel
+import ru.cyber102.arinspector.ui.components.MottelBadge
 import ru.cyber102.arinspector.ui.components.ScanLine
 import ru.cyber102.arinspector.ui.components.StatusPill
+import ru.cyber102.arinspector.ui.components.ThumbAction
+import ru.cyber102.arinspector.ui.components.ThumbSecondary
 import ru.cyber102.arinspector.ui.settings.SettingsSheet
 import ru.cyber102.arinspector.ui.theme.HudBlack
 import ru.cyber102.arinspector.ui.theme.HudCyan
@@ -95,14 +100,14 @@ import kotlin.math.min
 
 @Composable
 fun ScannerScreen(
-    vm: InspectionViewModel,
-    onEquipmentReady: (Equipment) -> Unit
+    vm: InspectionViewModel
 ) {
     val context = LocalContext.current
-    val equipment by vm.equipment.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val demoMode by vm.demoMode.collectAsStateWithLifecycle()
+    val assistantOpen by vm.assistantOpen.collectAsStateWithLifecycle()
+    val serverHealth by vm.serverHealth.collectAsStateWithLifecycle()
 
     var hasPermission by remember {
         mutableStateOf(
@@ -116,10 +121,7 @@ fun ScannerScreen(
 
     LaunchedEffect(Unit) {
         if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
-    }
-
-    LaunchedEffect(equipment) {
-        equipment?.let(onEquipmentReady)
+        vm.refreshHealth()
     }
 
     var manualId by remember { mutableStateOf("") }
@@ -204,10 +206,14 @@ fun ScannerScreen(
                     MonoLabel("кибер 102 · обслуживание оборудования")
                 }
                 Spacer(Modifier.weight(1f))
-                StatusPill(
-                    text = if (demoMode) "DEMO" else "LIVE",
-                    color = if (demoMode) HudCyan else HudGreen
-                )
+                if (serverHealth?.isLive == true) {
+                    StatusPill("LIVE AI", HudGreen)
+                } else {
+                    StatusPill(
+                        text = if (demoMode) "DEMO" else "LIVE",
+                        color = if (demoMode) HudCyan else HudGreen
+                    )
+                }
             }
 
             Spacer(Modifier.weight(1f))
@@ -226,19 +232,26 @@ fun ScannerScreen(
                         Spacer(Modifier.weight(1f))
                         MonoLabel("ШАГ 01 / 03")
                     }
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = "Наведите камеру на QR-код",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = TextPrimary
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Код оборудования откроет AR-схему узлов и ИИ-инспекцию.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextMuted
-                    )
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Наведите камеру на QR-код",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = TextPrimary
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Код откроет AR-схему узлов и ИИ-осмотр.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         DemoData.demoIds.forEach { id ->
@@ -249,15 +262,16 @@ fun ScannerScreen(
                         }
                     }
 
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(10.dp))
 
+                    // Ручной ввод — страховка, если QR не читается (блики, мелкий код).
                     OutlinedTextField(
                         value = manualId,
                         onValueChange = { manualId = it.uppercase() },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = {
                             Text(
-                                "или введите код вручную: PUMP-402",
+                                "или код вручную: PUMP-402",
                                 color = TextDim,
                                 style = MaterialTheme.typography.bodyMedium
                             )
@@ -274,7 +288,7 @@ fun ScannerScreen(
                                 }
                             ) {
                                 Icon(
-                                    Icons.Filled.ArrowForward,
+                                    Icons.AutoMirrored.Filled.ArrowForward,
                                     contentDescription = "Открыть",
                                     tint = SafetyYellow
                                 )
@@ -286,15 +300,40 @@ fun ScannerScreen(
                                 if (manualId.isNotBlank() && !loading) vm.loadEquipment(manualId)
                             }
                         ),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = SafetyYellow,
+                            unfocusedBorderColor = HudLine,
+                            cursorColor = SafetyYellow
+                        )
                     )
 
-                    Spacer(Modifier.height(10.dp))
+                    error?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = HudRed
+                        )
+                    }
+
+                    Spacer(Modifier.height(6.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        TextButton(onClick = { showSettings = true }) {
+                            Icon(
+                                Icons.Filled.Settings,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = HudCyan
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("Сеть и режим", color = HudCyan)
+                        }
+                        Spacer(Modifier.weight(1f))
                         Switch(
                             checked = demoMode,
                             onCheckedChange = { vm.setDemoMode(it) },
@@ -305,38 +344,43 @@ fun ScannerScreen(
                                 uncheckedTrackColor = HudLine
                             )
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = "Демо-режим",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary
-                            )
-                            MonoLabel("локальные ответы API · офлайн")
-                        }
-                        TextButton(onClick = { showSettings = true }) {
-                            Icon(
-                                Icons.Filled.Settings,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = HudCyan
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("Сеть", color = HudCyan)
-                        }
-                    }
-
-                    error?.let {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = HudRed
-                        )
+                        Spacer(Modifier.width(6.dp))
+                        MonoLabel(if (demoMode) "демо" else "live")
                     }
                 }
             }
         }
+
+        // Ассистент — над главной кнопкой, обе в зоне большого пальца правой руки.
+        MottelBadge(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(end = 26.dp, bottom = 344.dp)
+                .clip(CircleShape)
+                .clickable { vm.openAssistant() },
+            size = 46.dp
+        )
+
+        // Главная кнопка в дуге большого пальца: открывает введённый код,
+        // а если код не введён — честно ведёт в «Сеть и режим».
+        ThumbAction(
+            label = if (manualId.isBlank()) "КОД" else "ОТКРЫТЬ",
+            caption = if (manualId.isBlank()) "или сеть" else "паспорт",
+            accent = SafetyYellow,
+            enabled = !loading,
+            onClick = {
+                if (manualId.isNotBlank()) {
+                    vm.loadEquipment(manualId)
+                } else {
+                    showSettings = true
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(end = 12.dp, bottom = 264.dp)
+        )
 
         if (loading) {
             LoadingOverlay()
@@ -345,6 +389,10 @@ fun ScannerScreen(
 
     if (showSettings) {
         SettingsSheet(vm = vm, onDismiss = { showSettings = false })
+    }
+
+    if (assistantOpen) {
+        AssistantSheet(vm = vm, onDismiss = { vm.closeAssistant() })
     }
 }
 

@@ -132,3 +132,32 @@ data class Fetched<T>(
     val data: T,
     val fromDemo: Boolean
 )
+
+/** Одно сообщение диалога с ассистентом «Моттэл». */
+data class ChatTurn(
+    /** "user" | "mottel" */
+    val role: String,
+    val text: String
+)
+
+data class ChatRequest(
+    val message: String,
+    @SerializedName("equipment_id")
+    val equipmentId: String? = null,
+    val history: List<ChatTurn> = emptyList()
+)
+
+data class ChatResponse(
+    val reply: String = "",
+    val model: String? = null
+)
+
+data class HealthResponse(
+    val status: String = "",
+    /** "live" — реальная модель, "mock" — заранее подготовленные ответы. */
+    val mode: String = "mock",
+    val model: String? = null,
+    val time: String? = null
+) {
+    val isLive: Boolean get() = mode.equals("live", true)
+}

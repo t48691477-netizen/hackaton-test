@@ -105,10 +105,12 @@ import ru.cyber102.arinspector.data.Defect
 import ru.cyber102.arinspector.data.Equipment
 import ru.cyber102.arinspector.data.EquipmentComponent
 import ru.cyber102.arinspector.data.InspectResponse
+import ru.cyber102.arinspector.ui.assistant.AssistantSheet
 import ru.cyber102.arinspector.ui.components.HudPanel
 import ru.cyber102.arinspector.ui.components.MonoLabel
-import ru.cyber102.arinspector.ui.components.PrimaryAction
+import ru.cyber102.arinspector.ui.components.MottelBadge
 import ru.cyber102.arinspector.ui.components.StatusPill
+import ru.cyber102.arinspector.ui.components.ThumbAction
 import ru.cyber102.arinspector.ui.result.ResultSheet
 import ru.cyber102.arinspector.ui.theme.HudAmber
 import ru.cyber102.arinspector.ui.theme.HudBlack
@@ -169,9 +171,12 @@ fun ArScreen(
     var selectedComponent by remember { mutableStateOf<EquipmentComponent?>(null) }
     var selectedDefect by remember { mutableStateOf<Defect?>(null) }
     val controller = remember { ArController() }
+    val assistantOpen by vm.assistantOpen.collectAsStateWithLifecycle()
+    val serverHealth by vm.serverHealth.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         arSupported = withContext(Dispatchers.IO) { ArCoreSupport.isSupported(context) }
+        vm.refreshHealth()
     }
 
     LaunchedEffect(inspection) {
@@ -212,11 +217,20 @@ fun ArScreen(
                 onNodeSelected = { component ->
                     selectedDefect = inspection?.defects?.firstOrNull { it.nodeId == component.id }
                     selectedComponent = component
+                },
+                onDefectTap = { defect ->
+                    selectedDefect = defect
+                    selectedComponent = resolveComponent(equipment, defect)
+                        ?: syntheticComponent(defect)
                 }
             )
         }
 
-        if (inspection?.defects?.isNotEmpty() == true) {
+        if (inspection?.defects?.isNotEmpty() == true &&
+            arSupported == true && !arFailed
+        ) {
+            // В настоящем AR оверлей лежит поверх SceneView и перехватывает тапы:
+            // выбор узла там дублируется чипами в нижней панели.
             DefectOverlay(
                 defects = inspection?.defects.orEmpty(),
                 modifier = Modifier.fillMaxSize(),
@@ -236,6 +250,7 @@ fun ArScreen(
             equipment = equipment,
             demoResponse = demoResponse,
             fallback = arSupported == false || arFailed,
+            health = serverHealth,
             onBack = onBack
         )
 
@@ -245,8 +260,10 @@ fun ArScreen(
             scanning = scanning,
             anchorPlaced = anchorPlaced,
             fallback = arSupported == false || arFailed,
+            assistantBusy = false,
             onPlaceAnchor = { controller.place() },
             onScan = { controller.scan() },
+            onAssistant = { vm.openAssistant() },
             onNodeSelected = { component ->
                 selectedDefect = inspection?.defects?.firstOrNull { it.nodeId == component.id }
                 selectedComponent = component
@@ -254,6 +271,10 @@ fun ArScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
         )
+    }
+
+    if (assistantOpen) {
+        AssistantSheet(vm = vm, onDismiss = { vm.closeAssistant() })
     }
 
     val component = selectedComponent
@@ -522,6 +543,7 @@ private fun ArTopBar(
     equipment: Equipment,
     demoResponse: Boolean,
     fallback: Boolean,
+    health: ru.cyber102.arinspector.data.HealthResponse?,
     onBack: () -> Unit
 ) {
     Column(
@@ -543,7 +565,9 @@ private fun ArTopBar(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     MonoLabel("${equipment.id} · AR-СЦЕНА", color = SafetyYellow)
                     Spacer(Modifier.width(8.dp))
-                    if (demoResponse) {
+                    if (health?.isLive == true) {
+                        StatusPill("LIVE AI", HudGreen)
+                    } else if (demoResponse) {
                         StatusPill("DEMO", HudCyan)
                     }
                     if (fallback) {
@@ -579,8 +603,10 @@ private fun ArBottomBar(
     scanning: Boolean,
     anchorPlaced: Boolean,
     fallback: Boolean,
+    assistantBusy: Boolean,
     onPlaceAnchor: () -> Unit,
     onScan: () -> Unit,
+    onAssistant: () -> Unit,
     onNodeSelected: (EquipmentComponent) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -593,83 +619,89 @@ private fun ArBottomBar(
                 )
             )
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 10.dp)
     ) {
+        // Компактная сводка: цветная полоса + крупный текст статуса.
         inspection?.let { result ->
-            HudPanel(
-                modifier = Modifier.fillMaxWidth(),
-                accent = if (result.isCritical) HudRed else if (result.defectCount > 0) SafetyYellow else HudGreen
+            val accent = when {
+                result.isCritical -> HudRed
+                result.defectCount > 0 -> SafetyYellow
+                else -> HudGreen
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(HudBlack.copy(alpha = 0.82f))
+                    .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.WarningAmber,
-                        contentDescription = null,
-                        tint = if (result.isCritical) HudRed else SafetyYellow,
-                        modifier = Modifier.size(18.dp)
+                Box(
+                    Modifier
+                        .size(width = 3.dp, height = 30.dp)
+                        .background(accent)
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = when {
+                            result.defectCount == 0 -> "НОРМА · дефектов нет"
+                            result.isCritical -> "КРИТИЧНО · ${result.defectCount} находки"
+                            else -> "ВНИМАНИЕ · ${result.defectCount}"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextPrimary,
+                        maxLines = 1
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = when {
-                                result.defectCount == 0 -> "Дефектов не обнаружено"
-                                result.isCritical -> "Высокий риск · ${result.defectCount} дефекта"
-                                else -> "Обнаружено дефектов: ${result.defectCount}"
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary
-                        )
-                        MonoLabel("ИИ-анализ кадра · ${result.model ?: "vision-model"}")
-                    }
-                    StatusPill(
-                        text = result.status.uppercase(),
-                        color = if (result.isCritical) HudRed else SafetyYellow,
-                        filled = result.isCritical
-                    )
+                    MonoLabel("${result.model ?: "vision"} · нажми маркер для разбора")
                 }
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
         }
 
         if (!anchorPlaced && !fallback) {
-            HudPanel(
-                modifier = Modifier.fillMaxWidth(),
-                accent = HudCyan
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(HudBlack.copy(alpha = 0.72f))
+                    .border(1.dp, HudCyan.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.CenterFocusStrong,
-                        contentDescription = null,
-                        tint = HudCyan,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = "Наведите камеру на QR-код",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary
-                        )
-                        MonoLabel("коснитесь плоскости, чтобы поставить якорь")
-                    }
-                    Text(
-                        text = "РАЗМЕСТИТЬ",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SafetyYellow,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { onPlaceAnchor() }
-                            .padding(horizontal = 10.dp, vertical = 8.dp)
-                    )
-                }
+                Icon(
+                    Icons.Filled.CenterFocusStrong,
+                    contentDescription = null,
+                    tint = HudCyan,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Якорь: наведи или",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "РАЗМЕСТИТЬ",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SafetyYellow,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onPlaceAnchor() }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
         }
 
+        // Полоса узлов: горизонтальный скролл, тап = карточка.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             equipment.components.forEach { component ->
                 val defect = inspection?.defects?.firstOrNull { it.nodeId == component.id }
@@ -681,19 +713,19 @@ private fun ArBottomBar(
                 }
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(HudSurface)
-                        .border(1.dp, accent.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(HudBlack.copy(alpha = 0.86f))
+                        .border(1.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
                         .clickable { onNodeSelected(component) }
-                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                        .padding(start = 4.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         Modifier
-                            .size(6.dp)
-                            .background(accent, CircleShape)
+                            .size(width = 3.dp, height = 14.dp)
+                            .background(accent)
                     )
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(7.dp))
                     Text(
                         text = component.name,
                         style = MaterialTheme.typography.labelSmall,
@@ -706,16 +738,51 @@ private fun ArBottomBar(
 
         Spacer(Modifier.height(10.dp))
 
-        PrimaryAction(
-            text = when {
-                scanning -> "ИИ анализирует кадр…"
-                inspection == null -> "Запустить ИИ-сканирование"
-                else -> "Сканировать повторно"
-            },
-            icon = Icons.Filled.AutoAwesome,
-            enabled = !scanning,
-            onClick = onScan
-        )
+        // Главное действие — в правой нижней дуге большого пальца.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.Start
+            ) {
+                MonoLabel(
+                    text = if (inspection == null) "шаг 02 / 03 · осмотр" else "осмотр завершён",
+                    color = TextDim
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                MottelBadge(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onAssistant() },
+                    size = 46.dp,
+                    speaking = assistantBusy
+                )
+                MonoLabel("моттэл", color = SafetyYellow)
+            }
+
+            Spacer(Modifier.width(14.dp))
+
+            ThumbAction(
+                label = when {
+                    scanning -> "…"
+                    inspection == null -> "СКАН"
+                    else -> "ЕЩЁ"
+                },
+                caption = when {
+                    scanning -> "анализ"
+                    inspection == null -> "ии-осмотр"
+                    else -> "сканировать"
+                },
+                accent = SafetyYellow,
+                enabled = !scanning,
+                onClick = onScan
+            )
+        }
     }
 }
 
@@ -777,7 +844,8 @@ private fun FallbackStage(
     inspection: InspectResponse?,
     controller: ArController,
     modifier: Modifier = Modifier,
-    onNodeSelected: (EquipmentComponent) -> Unit
+    onNodeSelected: (EquipmentComponent) -> Unit,
+    onDefectTap: (Defect) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -865,6 +933,14 @@ private fun FallbackStage(
                     )
                 )
         )
+        // Оверлей дефектов рисуется до маркеров и не перекрывает их тапы.
+        if (inspection?.defects?.isNotEmpty() == true) {
+            DefectOverlay(
+                defects = inspection.defects,
+                modifier = Modifier.fillMaxSize(),
+                onDefectTap = onDefectTap
+            )
+        }
         SimulatedMarkers(
             equipment = equipment,
             inspection = inspection,

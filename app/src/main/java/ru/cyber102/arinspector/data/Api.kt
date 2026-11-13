@@ -15,6 +15,13 @@ interface CyberApi {
 
     @POST("api/reports")
     suspend fun report(@Body request: ReportRequest): ReportResponse
+
+    /** Ассистент «Моттэл»: разбор находок, запчасти, оформление акта. */
+    @POST("api/chat")
+    suspend fun chat(@Body request: ChatRequest): ChatResponse
+
+    @GET("api/health")
+    suspend fun health(): HealthResponse
 }
 
 object QrParser {

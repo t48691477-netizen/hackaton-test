@@ -1,5 +1,6 @@
 package ru.cyber102.arinspector
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -20,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ru.cyber102.arinspector.data.Equipment
 import ru.cyber102.arinspector.ui.ar.ArScreen
@@ -30,20 +32,32 @@ import ru.cyber102.arinspector.vm.InspectionViewModel
 
 class MainActivity : ComponentActivity() {
 
+    // Отладочный вход в сцену без QR:
+    //   adb shell am start -n ru.cyber102.arinspector/.MainActivity \
+    //       --es equipment_id PUMP-402
+    // Держим в состоянии, чтобы повторный запуск поверх открытого приложения
+    // (onNewIntent) тоже срабатывал, а не терялся.
+    private val presetEquipmentId = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Отладочный вход в сцену без QR:
-        //   adb shell am start -n ru.cyber102.arinspector/.MainActivity \
-        //       --es equipment_id PUMP-402
-        val presetEquipmentId: String? = intent?.getStringExtra(EXTRA_EQUIPMENT_ID)
+        presetEquipmentId.value = intent?.getStringExtra(EXTRA_EQUIPMENT_ID)
 
         setContent {
             ARInspectorTheme {
-                AppRoot(presetEquipmentId)
+                AppRoot(presetEquipmentId.value)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(EXTRA_EQUIPMENT_ID)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { presetEquipmentId.value = it }
     }
 
     private companion object {
@@ -60,9 +74,16 @@ private sealed interface Screen {
 private fun AppRoot(presetEquipmentId: String?) {
     val vm: InspectionViewModel = viewModel()
     var screen by remember { mutableStateOf<Screen>(Screen.Scanner) }
+    val equipment by vm.equipment.collectAsStateWithLifecycle()
 
     LaunchedEffect(presetEquipmentId) {
         if (!presetEquipmentId.isNullOrBlank()) vm.loadEquipment(presetEquipmentId)
+    }
+
+    // Единая точка перехода в AR: и QR, и отладочный deep-link приходят сюда,
+    // поэтому сцена открывается даже если сканер уже не на экране.
+    LaunchedEffect(equipment) {
+        equipment?.let { if (screen !is Screen.Ar) screen = Screen.Ar(it) }
     }
 
     BackHandler(enabled = screen is Screen.Ar) {
@@ -83,10 +104,7 @@ private fun AppRoot(presetEquipmentId: String?) {
             label = "screen"
         ) { current ->
             when (current) {
-                is Screen.Scanner -> ScannerScreen(
-                    vm = vm,
-                    onEquipmentReady = { equipment -> screen = Screen.Ar(equipment) }
-                )
+                is Screen.Scanner -> ScannerScreen(vm = vm)
 
                 is Screen.Ar -> ArScreen(
                     vm = vm,
