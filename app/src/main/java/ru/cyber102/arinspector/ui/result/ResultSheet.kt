@@ -62,7 +62,7 @@ import ru.cyber102.arinspector.ui.theme.HudGreen
 import ru.cyber102.arinspector.ui.theme.HudLine
 import ru.cyber102.arinspector.ui.theme.HudSurface
 import ru.cyber102.arinspector.ui.theme.HudRed
-import ru.cyber102.arinspector.ui.theme.SafetyYellow
+import ru.cyber102.arinspector.ui.theme.Indigo
 import ru.cyber102.arinspector.ui.theme.TextMuted
 import ru.cyber102.arinspector.ui.theme.TextPrimary
 import ru.cyber102.arinspector.util.PdfAct
@@ -123,7 +123,7 @@ fun ResultSheet(
                     color = when {
                         defect == null -> HudGreen
                         defect.isCritical -> HudRed
-                        else -> SafetyYellow
+                        else -> Indigo
                     }
                 )
                 Spacer(Modifier.weight(1f))
@@ -172,7 +172,7 @@ fun ResultSheet(
                     Icon(
                         Icons.Filled.WarningAmber,
                         contentDescription = null,
-                        tint = if (defect.isCritical) HudRed else SafetyYellow,
+                        tint = if (defect.isCritical) HudRed else Indigo,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(8.dp))
@@ -185,26 +185,26 @@ fun ResultSheet(
                     Text(
                         text = "${(defect.confidence * 100).toInt()}%",
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (defect.isCritical) HudRed else SafetyYellow
+                        color = if (defect.isCritical) HudRed else Indigo
                     )
                 }
                 Spacer(Modifier.height(8.dp))
                 ConfidenceBar(
                     value = defect.confidence,
-                    color = if (defect.isCritical) HudRed else SafetyYellow
+                    color = if (defect.isCritical) HudRed else Indigo
                 )
                 Spacer(Modifier.height(8.dp))
                 MonoLabel("уверенность модели · ${defect.type.uppercase()}")
 
                 if (defect.analysis != null) {
                     Spacer(Modifier.height(14.dp))
-                    HudPanel(Modifier.fillMaxWidth(), accent = SafetyYellow) {
+                    HudPanel(Modifier.fillMaxWidth(), accent = Indigo) {
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = "ИНЖЕНЕРНЫЙ АНАЛИЗ",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = SafetyYellow
+                                    color = Indigo
                                 )
                                 Spacer(Modifier.weight(1f))
                                 MonoLabel("LLM")
@@ -325,7 +325,7 @@ fun ResultSheet(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
-                            color = SafetyYellow,
+                            color = Indigo,
                             strokeWidth = 2.dp
                         )
                         Spacer(Modifier.width(8.dp))

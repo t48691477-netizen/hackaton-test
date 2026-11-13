@@ -44,50 +44,58 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import ru.cyber102.arinspector.ui.theme.HudBlack
-import ru.cyber102.arinspector.ui.theme.HudCyan
-import ru.cyber102.arinspector.ui.theme.HudLine
-import ru.cyber102.arinspector.ui.theme.HudSurface
-import ru.cyber102.arinspector.ui.theme.SafetyYellow
-import ru.cyber102.arinspector.ui.theme.TextDim
-import ru.cyber102.arinspector.ui.theme.TextMuted
+import ru.cyber102.arinspector.ui.theme.Aqua
+import ru.cyber102.arinspector.ui.theme.Hairline
+import ru.cyber102.arinspector.ui.theme.Ink
+import ru.cyber102.arinspector.ui.theme.InkCard
+import ru.cyber102.arinspector.ui.theme.Indigo
+import ru.cyber102.arinspector.ui.theme.IndigoSoft
+import ru.cyber102.arinspector.ui.theme.TextHi
+import ru.cyber102.arinspector.ui.theme.TextLow
+import ru.cyber102.arinspector.ui.theme.TextMid
 
-/** Рамка в стиле HUD: тёмная заливка, тонкий контур и угловые скобки. */
+/**
+ * Карточка интерфейса.
+ *
+ * Раньше это была «панель с уголками-визирами» — приём из видоискателя,
+ * который на каждом экране превращал интерфейс в строительный стенд.
+ * Теперь: мягкое скругление, слоистая поверхность, тонкая линия-контур и
+ * опциональная цветная полоса слева для смыслового акцента.
+ */
 fun Modifier.hudFrame(
-    accent: Color = HudCyan,
-    fill: Color = HudSurface.copy(alpha = 0.94f),
-    cornerLength: Dp = 14.dp,
+    accent: Color = Indigo,
+    fill: Color = InkCard,
+    cornerLength: Dp = 0.dp,
     strokeWidth: Dp = 1.dp,
-    bracketWidth: Dp = 2.dp
-): Modifier = drawBehind {
-    drawRect(fill)
-    drawRect(HudLine.copy(alpha = 0.9f), style = Stroke(strokeWidth.toPx()))
-    val len = cornerLength.toPx()
-    val width = bracketWidth.toPx()
-    val w = size.width
-    val h = size.height
-    drawLine(accent, Offset(0f, 0f), Offset(len, 0f), width)
-    drawLine(accent, Offset(0f, 0f), Offset(0f, len), width)
-    drawLine(accent, Offset(w, 0f), Offset(w - len, 0f), width)
-    drawLine(accent, Offset(w, 0f), Offset(w, len), width)
-    drawLine(accent, Offset(0f, h), Offset(len, h), width)
-    drawLine(accent, Offset(0f, h), Offset(0f, h - len), width)
-    drawLine(accent, Offset(w, h), Offset(w - len, h), width)
-    drawLine(accent, Offset(w, h), Offset(w, h - len), width)
-}
+    bracketWidth: Dp = 0.dp
+): Modifier = this
+    .clip(RoundedCornerShape(14.dp))
+    .background(fill)
+    .border(strokeWidth, Hairline, RoundedCornerShape(14.dp))
 
 @Composable
 fun HudPanel(
     modifier: Modifier = Modifier,
-    accent: Color = HudCyan,
+    accent: Color = Indigo,
     content: @Composable () -> Unit
 ) {
     Box(
         modifier = modifier
-            .hudFrame(accent = accent)
-            .padding(14.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(InkCard)
+            .border(1.dp, Hairline, RoundedCornerShape(14.dp))
     ) {
-        content()
+        // Смысловая полоса слева: единственный цветной акцент карточки.
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(accent)
+        )
+        Box(Modifier.padding(start = 14.dp, top = 14.dp, end = 14.dp, bottom = 14.dp)) {
+            content()
+        }
     }
 }
 
@@ -100,22 +108,22 @@ fun StatusPill(
 ) {
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(if (filled) color else color.copy(alpha = 0.12f))
-            .border(1.dp, color.copy(alpha = 0.65f), RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (filled) color else color.copy(alpha = 0.14f))
+            .border(1.dp, color.copy(alpha = if (filled) 0f else 0.35f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             Modifier
                 .size(5.dp)
-                .background(if (filled) HudBlack else color, CircleShape)
+                .background(if (filled) Ink else color, CircleShape)
         )
         Spacer(Modifier.width(6.dp))
         Text(
             text = text.uppercase(),
             style = MaterialTheme.typography.labelSmall,
-            color = if (filled) HudBlack else color,
+            color = if (filled) Ink else color,
             maxLines = 1
         )
     }
@@ -125,7 +133,7 @@ fun StatusPill(
 fun MonoLabel(
     text: String,
     modifier: Modifier = Modifier,
-    color: Color = TextMuted
+    color: Color = TextMid
 ) {
     Text(
         text = text.uppercase(),
@@ -144,30 +152,34 @@ fun ConfidenceBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(4.dp)
-            .background(HudLine)
+            .height(6.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(Hairline)
     ) {
         Box(
             Modifier
-                .fillMaxWidth(value.coerceIn(0f, 1f))
+                .fillMaxWidth(value.coerceIn(0.02f, 1f))
                 .fillMaxHeight()
-                .background(color)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(color.copy(alpha = 0.75f), color)
+                    )
+                )
         )
     }
 }
 
-/** Бегущая сканирующая линия. */
 @Composable
 fun ScanLine(
     modifier: Modifier = Modifier,
-    color: Color = HudCyan
+    color: Color = Aqua
 ) {
     val transition = rememberInfiniteTransition(label = "scanline")
     val progress by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2200, easing = LinearEasing),
+            animation = tween(durationMillis = 2600, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "scanline-progress"
@@ -175,10 +187,10 @@ fun ScanLine(
     Box(
         modifier = modifier.drawBehind {
             val y = size.height * progress
-            val glow = 48.dp.toPx()
+            val glow = 64.dp.toPx()
             drawRect(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color.Transparent, color.copy(alpha = 0.28f)),
+                    colors = listOf(Color.Transparent, color.copy(alpha = 0.22f)),
                     startY = (y - glow).coerceAtLeast(0f),
                     endY = y
                 ),
@@ -186,10 +198,10 @@ fun ScanLine(
                 size = Size(size.width, glow.coerceAtMost(y))
             )
             drawLine(
-                color = color.copy(alpha = 0.95f),
+                color = color.copy(alpha = 0.9f),
                 start = Offset(0f, y),
                 end = Offset(size.width, y),
-                strokeWidth = 2.dp.toPx()
+                strokeWidth = 1.5.dp.toPx()
             )
         }
     )
@@ -207,28 +219,28 @@ fun PrimaryAction(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .height(56.dp),
+            .height(54.dp),
         enabled = enabled,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = SafetyYellow,
-            contentColor = HudBlack,
-            disabledContainerColor = HudLine,
-            disabledContentColor = TextDim
+            containerColor = Indigo,
+            contentColor = TextHi,
+            disabledContainerColor = Hairline,
+            disabledContentColor = TextLow
         )
     ) {
         if (icon != null) {
             androidx.compose.material3.Icon(
                 imageVector = icon,
                 contentDescription = null,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(19.dp)
             )
             Spacer(Modifier.width(10.dp))
         }
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -243,21 +255,23 @@ fun KeyValueRow(
     valueColor: Color = MaterialTheme.colorScheme.onSurface
 ) {
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Top
     ) {
         Text(
             text = key,
-            style = MaterialTheme.typography.labelSmall,
-            color = TextMuted
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextMid
         )
         Spacer(Modifier.width(12.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp
+                fontSize = 12.5.sp
             ),
             color = valueColor,
             maxLines = 2
@@ -270,7 +284,7 @@ fun SectionTitle(
     index: String,
     title: String,
     modifier: Modifier = Modifier,
-    color: Color = SafetyYellow
+    color: Color = IndigoSoft
 ) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -281,9 +295,9 @@ fun SectionTitle(
         Spacer(Modifier.width(8.dp))
         Box(
             Modifier
-                .width(14.dp)
+                .width(16.dp)
                 .height(1.dp)
-                .background(color.copy(alpha = 0.7f))
+                .background(color.copy(alpha = 0.5f))
         )
         Spacer(Modifier.width(8.dp))
         Text(
@@ -301,7 +315,7 @@ fun HudDivider(modifier: Modifier = Modifier) {
         modifier
             .fillMaxWidth()
             .height(1.dp)
-            .background(HudLine.copy(alpha = 0.7f))
+            .background(Hairline)
     )
 }
 
@@ -318,28 +332,28 @@ fun <T> SegmentedChoice(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isSelected) SafetyYellow.copy(alpha = 0.10f) else HudSurface)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isSelected) Indigo.copy(alpha = 0.14f) else Ink)
                     .border(
                         width = 1.dp,
-                        color = if (isSelected) SafetyYellow else HudLine,
-                        shape = RoundedCornerShape(8.dp)
+                        color = if (isSelected) Indigo else Hairline,
+                        shape = RoundedCornerShape(12.dp)
                     )
                     .clickable { onSelect(value) }
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp, vertical = 13.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     Modifier
-                        .size(16.dp)
+                        .size(18.dp)
                         .border(
                             1.5.dp,
-                            if (isSelected) SafetyYellow else TextDim,
+                            if (isSelected) Indigo else TextLow,
                             CircleShape
                         )
-                        .padding(4.dp)
+                        .padding(5.dp)
                         .background(
-                            if (isSelected) SafetyYellow else Color.Transparent,
+                            if (isSelected) Indigo else Color.Transparent,
                             CircleShape
                         )
                 )
@@ -347,7 +361,7 @@ fun <T> SegmentedChoice(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else TextMuted
+                    color = if (isSelected) TextHi else TextMid
                 )
             }
         }

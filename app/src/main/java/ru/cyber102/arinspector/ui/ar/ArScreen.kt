@@ -119,7 +119,7 @@ import ru.cyber102.arinspector.ui.theme.HudGreen
 import ru.cyber102.arinspector.ui.theme.HudLine
 import ru.cyber102.arinspector.ui.theme.HudSurface
 import ru.cyber102.arinspector.ui.theme.HudRed
-import ru.cyber102.arinspector.ui.theme.SafetyYellow
+import ru.cyber102.arinspector.ui.theme.Indigo
 import ru.cyber102.arinspector.ui.theme.TextDim
 import ru.cyber102.arinspector.ui.theme.TextMuted
 import ru.cyber102.arinspector.ui.theme.TextPrimary
@@ -363,7 +363,7 @@ private fun ArCoreStage(
             val critical = defect != null && (defect.isCritical || inspection.isCritical)
             val accent = when {
                 critical -> HudRed
-                defect != null -> SafetyYellow
+                defect != null -> Indigo
                 else -> HudCyan
             }
             val pos = Position(
@@ -563,7 +563,7 @@ private fun ArTopBar(
             }
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    MonoLabel("${equipment.id} · AR-СЦЕНА", color = SafetyYellow)
+                    MonoLabel("${equipment.id} · AR-СЦЕНА", color = Indigo)
                     Spacer(Modifier.width(8.dp))
                     if (health?.isLive == true) {
                         StatusPill("LIVE AI", HudGreen)
@@ -625,7 +625,7 @@ private fun ArBottomBar(
         inspection?.let { result ->
             val accent = when {
                 result.isCritical -> HudRed
-                result.defectCount > 0 -> SafetyYellow
+                result.defectCount > 0 -> Indigo
                 else -> HudGreen
             }
             Row(
@@ -686,7 +686,7 @@ private fun ArBottomBar(
                 Text(
                     text = "РАЗМЕСТИТЬ",
                     style = MaterialTheme.typography.labelSmall,
-                    color = SafetyYellow,
+                    color = Indigo,
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .clickable { onPlaceAnchor() }
@@ -708,7 +708,7 @@ private fun ArBottomBar(
                 val critical = defect != null && (defect.isCritical || inspection.isCritical)
                 val accent = when {
                     critical -> HudRed
-                    defect != null -> SafetyYellow
+                    defect != null -> Indigo
                     else -> HudCyan
                 }
                 Row(
@@ -762,7 +762,7 @@ private fun ArBottomBar(
                     size = 46.dp,
                     speaking = assistantBusy
                 )
-                MonoLabel("моттэл", color = SafetyYellow)
+                MonoLabel("моттэл", color = Indigo)
             }
 
             Spacer(Modifier.width(14.dp))
@@ -778,7 +778,7 @@ private fun ArBottomBar(
                     inspection == null -> "ии-осмотр"
                     else -> "сканировать"
                 },
-                accent = SafetyYellow,
+                accent = Indigo,
                 enabled = !scanning,
                 onClick = onScan
             )
@@ -819,7 +819,7 @@ private fun ScanningOverlay() {
                 )
                 CircularProgressIndicator(
                     modifier = Modifier.size(34.dp),
-                    color = SafetyYellow,
+                    color = Indigo,
                     strokeWidth = 2.dp
                 )
             }
@@ -827,7 +827,7 @@ private fun ScanningOverlay() {
             Text(
                 text = "ИИ-СКАНИРОВАНИЕ",
                 style = MaterialTheme.typography.labelMedium,
-                color = SafetyYellow,
+                color = Indigo,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold
             )
@@ -988,7 +988,7 @@ private fun SimulatedMarkers(
             val critical = defect != null && (defect.isCritical || inspection.isCritical)
             val accent = when {
                 critical -> HudRed
-                defect != null -> SafetyYellow
+                defect != null -> Indigo
                 else -> HudCyan
             }
             val depth = (1f + component.offsetFromQr.z).coerceIn(0.6f, 1.8f)
@@ -1033,7 +1033,7 @@ private fun ArLoading() {
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = SafetyYellow)
+            CircularProgressIndicator(color = Indigo)
             Spacer(Modifier.height(14.dp))
             MonoLabel("Проверка ARCore…", color = TextDim)
         }

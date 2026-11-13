@@ -12,83 +12,99 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val HudColors = darkColorScheme(
-    primary = SafetyYellow,
-    onPrimary = HudBlack,
-    secondary = HudCyan,
-    onSecondary = HudBlack,
-    tertiary = HudGreen,
-    background = HudBlack,
-    onBackground = TextPrimary,
-    surface = HudSurface,
-    onSurface = TextPrimary,
-    surfaceVariant = HudPanelHigh,
-    onSurfaceVariant = TextMuted,
-    error = HudRed,
-    onError = HudBlack,
-    outline = HudLine,
-    outlineVariant = HudLine
+private val IndigoColors = darkColorScheme(
+    primary = Indigo,
+    onPrimary = TextHi,
+    primaryContainer = IndigoDeep,
+    onPrimaryContainer = TextHi,
+    secondary = Aqua,
+    onSecondary = Ink,
+    secondaryContainer = InkHover,
+    onSecondaryContainer = IndigoSoft,
+    tertiary = Violet,
+    onTertiary = Ink,
+    background = Ink,
+    onBackground = TextHi,
+    surface = InkRaised,
+    onSurface = TextHi,
+    surfaceVariant = InkCard,
+    onSurfaceVariant = TextMid,
+    surfaceContainer = InkCard,
+    surfaceContainerHigh = InkHover,
+    outline = HairlineStrong,
+    outlineVariant = Hairline,
+    error = Danger,
+    onError = Ink
 )
 
-private val HudTypography = Typography(
+/**
+ * Типографика: крупные спокойные заголовки, моноширинный только для цифр и
+ * идентификаторов. Прежний вариант делал «шильдиком» почти всё — читать было
+ * тяжело.
+ */
+private val IndigoTypography = Typography(
     displayLarge = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Bold,
-        fontSize = 36.sp,
-        letterSpacing = 1.sp
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 40.sp,
+        letterSpacing = (-0.5).sp,
+        lineHeight = 46.sp
     ),
     displayMedium = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Bold,
-        fontSize = 28.sp,
-        letterSpacing = 1.sp
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 32.sp,
+        letterSpacing = (-0.4).sp,
+        lineHeight = 38.sp
     ),
     headlineMedium = TextStyle(
         fontWeight = FontWeight.SemiBold,
-        fontSize = 22.sp,
-        letterSpacing = 0.2.sp
+        fontSize = 23.sp,
+        letterSpacing = (-0.2).sp,
+        lineHeight = 29.sp
     ),
     titleLarge = TextStyle(
         fontWeight = FontWeight.SemiBold,
         fontSize = 19.sp,
-        letterSpacing = 0.2.sp
+        letterSpacing = (-0.1).sp,
+        lineHeight = 25.sp
     ),
     titleMedium = TextStyle(
         fontWeight = FontWeight.Medium,
         fontSize = 16.sp,
-        letterSpacing = 0.1.sp
+        letterSpacing = 0.sp,
+        lineHeight = 22.sp
     ),
     bodyLarge = TextStyle(
-        fontSize = 15.sp,
-        lineHeight = 21.sp
+        fontSize = 15.5.sp,
+        lineHeight = 23.sp,
+        letterSpacing = 0.1.sp
     ),
     bodyMedium = TextStyle(
         fontSize = 13.5.sp,
-        lineHeight = 19.sp
+        lineHeight = 20.sp,
+        letterSpacing = 0.1.sp
     ),
     labelLarge = TextStyle(
         fontWeight = FontWeight.SemiBold,
-        fontSize = 14.sp,
-        letterSpacing = 0.4.sp
+        fontSize = 14.5.sp,
+        letterSpacing = 0.1.sp
     ),
     labelMedium = TextStyle(
-        fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        letterSpacing = 1.2.sp
+        fontSize = 11.5.sp,
+        letterSpacing = 0.6.sp
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.Medium,
-        fontSize = 9.5.sp,
-        letterSpacing = 1.4.sp
+        fontSize = 10.sp,
+        letterSpacing = 0.8.sp
     )
 )
 
-private val HudShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
-    small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(12.dp),
+private val HullShapes = Shapes(
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
     large = RoundedCornerShape(20.dp),
     extraLarge = RoundedCornerShape(28.dp)
 )
@@ -96,9 +112,9 @@ private val HudShapes = Shapes(
 @Composable
 fun ARInspectorTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = HudColors,
-        typography = HudTypography,
-        shapes = HudShapes,
+        colorScheme = IndigoColors,
+        typography = IndigoTypography,
+        shapes = HullShapes,
         content = content
     )
 }

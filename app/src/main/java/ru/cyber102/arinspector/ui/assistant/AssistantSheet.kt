@@ -1,4 +1,4 @@
-package ru.cyber102.arinspector.ui.assistant
+﻿package ru.cyber102.arinspector.ui.assistant
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -61,7 +61,7 @@ import ru.cyber102.arinspector.ui.theme.HudCyan
 import ru.cyber102.arinspector.ui.theme.HudGreen
 import ru.cyber102.arinspector.ui.theme.HudLine
 import ru.cyber102.arinspector.ui.theme.HudSurface
-import ru.cyber102.arinspector.ui.theme.SafetyYellow
+import ru.cyber102.arinspector.ui.theme.Indigo
 import ru.cyber102.arinspector.ui.theme.TextMuted
 import ru.cyber102.arinspector.ui.theme.TextPrimary
 import ru.cyber102.arinspector.vm.InspectionViewModel
@@ -147,11 +147,11 @@ fun AssistantSheet(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(12.dp),
-                                color = SafetyYellow,
+                                color = Indigo,
                                 strokeWidth = 2.dp
                             )
                             Spacer(Modifier.width(8.dp))
-                            MonoLabel("моттэл печатает…", color = SafetyYellow)
+                            MonoLabel("моттэл печатает…", color = Indigo)
                         }
                     }
                 }
@@ -205,9 +205,9 @@ fun AssistantSheet(
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
                     shape = RoundedCornerShape(10.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SafetyYellow,
+                        focusedBorderColor = Indigo,
                         unfocusedBorderColor = HudLine,
-                        cursorColor = SafetyYellow
+                        cursorColor = Indigo
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { send() })
@@ -217,7 +217,7 @@ fun AssistantSheet(
                     modifier = Modifier
                         .size(52.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (busy) HudLine else SafetyYellow)
+                        .background(if (busy) HudLine else Indigo)
                         .clickable(enabled = !busy) { send() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -249,10 +249,10 @@ private fun ChatBubble(turn: ChatTurn) {
             modifier = Modifier
                 .widthIn(max = 300.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(if (fromMottel) HudBlack else SafetyYellow.copy(alpha = 0.14f))
+                .background(if (fromMottel) HudBlack else Indigo.copy(alpha = 0.14f))
                 .border(
                     1.dp,
-                    if (fromMottel) HudLine else SafetyYellow.copy(alpha = 0.55f),
+                    if (fromMottel) HudLine else Indigo.copy(alpha = 0.55f),
                     RoundedCornerShape(10.dp)
                 )
                 .padding(horizontal = 12.dp, vertical = 10.dp)

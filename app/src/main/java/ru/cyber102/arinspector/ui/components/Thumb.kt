@@ -1,4 +1,4 @@
-package ru.cyber102.arinspector.ui.components
+﻿package ru.cyber102.arinspector.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -8,73 +8,96 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import ru.cyber102.arinspector.ui.theme.HudBlack
-import ru.cyber102.arinspector.ui.theme.HudGreen
-import ru.cyber102.arinspector.ui.theme.HudLine
-import ru.cyber102.arinspector.ui.theme.SafetyYellow
-import ru.cyber102.arinspector.ui.theme.TextDim
+import ru.cyber102.arinspector.ui.theme.Aqua
+import ru.cyber102.arinspector.ui.theme.Hairline
+import ru.cyber102.arinspector.ui.theme.HairlineStrong
+import ru.cyber102.arinspector.ui.theme.Indigo
+import ru.cyber102.arinspector.ui.theme.IndigoDeep
+import ru.cyber102.arinspector.ui.theme.IndigoSoft
+import ru.cyber102.arinspector.ui.theme.Ink
+import ru.cyber102.arinspector.ui.theme.InkHover
+import ru.cyber102.arinspector.ui.theme.TextHi
+import ru.cyber102.arinspector.ui.theme.TextLow
 
 /**
  * Главная кнопка в луче большого пальца (правая рука).
  *
- * Одна цель на весь низ экрана: 76 dp круг с подписью-«шильдиком» внутри.
- * Кнопка позиционируется в правом нижнем углу, вторая (ассистент) — чуть выше
- * и левее, чтобы расстояние между мишенями было больше 16 dp.
+ * Круглая цель 78 dp с индиго-градиентом, мягкой тенью-ореолом и подписью
+ * внутри. Расставлена так, чтобы от системного жеста внизу было не меньше
+ * 20 dp — не задевается при свайпе «назад».
  */
 @Composable
 fun ThumbAction(
     label: String,
     caption: String,
-    accent: Color,
+    accent: Color = Indigo,
     modifier: Modifier = Modifier,
-    size: Dp = 76.dp,
+    size: Dp = 78.dp,
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally
+    Box(
+        modifier = modifier
+            .size(size + 10.dp),
+        contentAlignment = Alignment.Center
     ) {
+        // Ореол: чуть расфокусированная подложка того же цвета.
         Box(
+            Modifier
+                .size(size + 10.dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(accent.copy(alpha = if (enabled) 0.28f else 0.06f), Color.Transparent)
+                    ),
+                    CircleShape
+                )
+        )
+        Column(
             modifier = Modifier
                 .size(size)
                 .clip(CircleShape)
-                .background(if (enabled) accent else HudLine)
-                .border(2.dp, HudBlack.copy(alpha = 0.55f), CircleShape)
+                .background(
+                    if (enabled) {
+                        Brush.linearGradient(listOf(IndigoSoft, accent, IndigoDeep))
+                    } else {
+                        Brush.linearGradient(listOf(HairlineStrong, Hairline))
+                    }
+                )
                 .clickable(enabled = enabled, onClick = onClick),
-            contentAlignment = Alignment.Center
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 12.sp,
-                    color = HudBlack,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2
-                )
-                Text(
-                    text = caption.uppercase(),
-                    fontSize = 7.5.sp,
-                    letterSpacing = 0.6.sp,
-                    color = HudBlack.copy(alpha = 0.72f),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1
-                )
-            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = TextHi,
+                textAlign = TextAlign.Center,
+                maxLines = 2
+            )
+            Text(
+                text = caption.uppercase(),
+                fontSize = 8.sp,
+                letterSpacing = 0.7.sp,
+                color = TextHi.copy(alpha = 0.7f),
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
         }
     }
 }
@@ -91,8 +114,8 @@ fun ThumbSecondary(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .background(HudBlack.copy(alpha = 0.88f))
-            .border(1.2.dp, HudLine, CircleShape)
+            .background(InkHover)
+            .border(1.dp, HairlineStrong, CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -100,7 +123,7 @@ fun ThumbSecondary(
     }
 }
 
-/** Статус-маркер: форма + текст, читается и в монохроме, и на солнце. */
+/** Статус-маркер: форма + текст. Читается в монохроме и на ярком солнце. */
 @Composable
 fun StatusBadge(
     label: String,
@@ -109,9 +132,9 @@ fun StatusBadge(
 ) {
     Box(
         modifier = modifier
-            .clip(CircleShape)
-            .background(HudBlack.copy(alpha = 0.9f))
-            .border(1.2.dp, accent, CircleShape)
+            .clip(RoundedCornerShape(999.dp))
+            .background(Ink.copy(alpha = 0.86f))
+            .border(1.dp, accent.copy(alpha = 0.7f), RoundedCornerShape(999.dp))
             .padding(horizontal = 10.dp, vertical = 4.dp)
     ) {
         Text(
@@ -128,6 +151,10 @@ fun DimCaption(text: String, modifier: Modifier = Modifier) {
         text = text,
         modifier = modifier,
         style = MaterialTheme.typography.labelSmall,
-        color = TextDim
+        color = TextLow
     )
 }
+
+/** Утилита для бейджа «живого» режима. */
+val LiveAccent: Color = Aqua
+

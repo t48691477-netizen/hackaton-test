@@ -1,4 +1,4 @@
-package ru.cyber102.arinspector.ui.components
+﻿package ru.cyber102.arinspector.ui.components
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import ru.cyber102.arinspector.ui.theme.HudBlack
 import ru.cyber102.arinspector.ui.theme.HudCyan
-import ru.cyber102.arinspector.ui.theme.SafetyYellow
+import ru.cyber102.arinspector.ui.theme.Indigo
 
 /**
  * Моттэл — инженерный ассистент.
@@ -38,7 +38,7 @@ import ru.cyber102.arinspector.ui.theme.SafetyYellow
 fun MottelAvatar(
     modifier: Modifier = Modifier,
     size: Dp = 48.dp,
-    accent: Color = SafetyYellow,
+    accent: Color = Indigo,
     speaking: Boolean = false
 ) {
     val transition = rememberInfiniteTransition(label = "mottel")
@@ -161,7 +161,7 @@ fun MottelAvatar(
 fun MottelBadge(
     modifier: Modifier = Modifier,
     size: Dp = 44.dp,
-    accent: Color = SafetyYellow,
+    accent: Color = Indigo,
     speaking: Boolean = false
 ) {
     Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {

@@ -42,7 +42,7 @@ import ru.cyber102.arinspector.ui.theme.HudCyan
 import ru.cyber102.arinspector.ui.theme.HudGreen
 import ru.cyber102.arinspector.ui.theme.HudLine
 import ru.cyber102.arinspector.ui.theme.HudSurface
-import ru.cyber102.arinspector.ui.theme.SafetyYellow
+import ru.cyber102.arinspector.ui.theme.Indigo
 import ru.cyber102.arinspector.ui.theme.TextMuted
 import ru.cyber102.arinspector.ui.theme.TextPrimary
 import ru.cyber102.arinspector.vm.InspectionViewModel
@@ -73,7 +73,7 @@ fun SettingsSheet(vm: InspectionViewModel, onDismiss: () -> Unit) {
             SectionTitle("01", "Подключение к API")
             Spacer(Modifier.height(14.dp))
 
-            HudPanel(modifier = Modifier.fillMaxWidth(), accent = SafetyYellow) {
+            HudPanel(modifier = Modifier.fillMaxWidth(), accent = Indigo) {
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -90,7 +90,7 @@ fun SettingsSheet(vm: InspectionViewModel, onDismiss: () -> Unit) {
                             onCheckedChange = { demo = it },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = HudBlack,
-                                checkedTrackColor = SafetyYellow,
+                                checkedTrackColor = Indigo,
                                 uncheckedThumbColor = TextMuted,
                                 uncheckedTrackColor = HudLine
                             )
@@ -121,9 +121,9 @@ fun SettingsSheet(vm: InspectionViewModel, onDismiss: () -> Unit) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 shape = RoundedCornerShape(8.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = SafetyYellow,
+                    focusedBorderColor = Indigo,
                     unfocusedBorderColor = HudLine,
-                    cursorColor = SafetyYellow
+                    cursorColor = Indigo
                 )
             )
             Spacer(Modifier.height(8.dp))

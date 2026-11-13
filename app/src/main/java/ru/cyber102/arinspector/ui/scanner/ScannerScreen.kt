@@ -91,7 +91,7 @@ import ru.cyber102.arinspector.ui.theme.HudGreen
 import ru.cyber102.arinspector.ui.theme.HudLine
 import ru.cyber102.arinspector.ui.theme.HudSurface
 import ru.cyber102.arinspector.ui.theme.HudRed
-import ru.cyber102.arinspector.ui.theme.SafetyYellow
+import ru.cyber102.arinspector.ui.theme.Indigo
 import ru.cyber102.arinspector.ui.theme.TextDim
 import ru.cyber102.arinspector.ui.theme.TextMuted
 import ru.cyber102.arinspector.ui.theme.TextPrimary
@@ -183,14 +183,14 @@ fun ScannerScreen(
                     Modifier
                         .size(38.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(SafetyYellow.copy(alpha = 0.12f))
-                        .border(1.dp, SafetyYellow.copy(alpha = 0.6f), RoundedCornerShape(8.dp)),
+                        .background(Indigo.copy(alpha = 0.12f))
+                        .border(1.dp, Indigo.copy(alpha = 0.6f), RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Filled.QrCodeScanner,
                         contentDescription = null,
-                        tint = SafetyYellow,
+                        tint = Indigo,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -220,7 +220,7 @@ fun ScannerScreen(
 
             HudPanel(
                 modifier = Modifier.fillMaxWidth(),
-                accent = SafetyYellow
+                accent = Indigo
             ) {
                 Column {
                     Row(
@@ -290,7 +290,7 @@ fun ScannerScreen(
                                 Icon(
                                     Icons.AutoMirrored.Filled.ArrowForward,
                                     contentDescription = "Открыть",
-                                    tint = SafetyYellow
+                                    tint = Indigo
                                 )
                             }
                         },
@@ -302,9 +302,9 @@ fun ScannerScreen(
                         ),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SafetyYellow,
+                            focusedBorderColor = Indigo,
                             unfocusedBorderColor = HudLine,
-                            cursorColor = SafetyYellow
+                            cursorColor = Indigo
                         )
                     )
 
@@ -339,7 +339,7 @@ fun ScannerScreen(
                             onCheckedChange = { vm.setDemoMode(it) },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = HudBlack,
-                                checkedTrackColor = SafetyYellow,
+                                checkedTrackColor = Indigo,
                                 uncheckedThumbColor = TextMuted,
                                 uncheckedTrackColor = HudLine
                             )
@@ -367,7 +367,7 @@ fun ScannerScreen(
         ThumbAction(
             label = if (manualId.isBlank()) "КОД" else "ОТКРЫТЬ",
             caption = if (manualId.isBlank()) "или сеть" else "паспорт",
-            accent = SafetyYellow,
+            accent = Indigo,
             enabled = !loading,
             onClick = {
                 if (manualId.isNotBlank()) {
@@ -424,12 +424,12 @@ private fun LoadingOverlay() {
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = SafetyYellow)
+            CircularProgressIndicator(color = Indigo)
             Spacer(Modifier.height(16.dp))
             Text(
                 text = "GET /api/equipment/…",
                 style = MaterialTheme.typography.labelMedium,
-                color = SafetyYellow
+                color = Indigo
             )
             Spacer(Modifier.height(6.dp))
             Text(
@@ -453,7 +453,7 @@ private fun PermissionPlaceholder(onRequest: () -> Unit, modifier: Modifier = Mo
             Icon(
                 Icons.Filled.CameraAlt,
                 contentDescription = null,
-                tint = SafetyYellow,
+                tint = Indigo,
                 modifier = Modifier.size(44.dp)
             )
             Spacer(Modifier.height(14.dp))
@@ -471,7 +471,7 @@ private fun PermissionPlaceholder(onRequest: () -> Unit, modifier: Modifier = Mo
             )
             Spacer(Modifier.height(16.dp))
             TextButton(onClick = onRequest) {
-                Text("Разрешить", color = SafetyYellow, fontWeight = FontWeight.Bold)
+                Text("Разрешить", color = Indigo, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -511,18 +511,18 @@ private fun ScannerReticle(modifier: Modifier = Modifier) {
 
         val bracket = 30.dp.toPx()
         val stroke = 3.dp.toPx()
-        drawLine(SafetyYellow, Offset(left, top), Offset(left + bracket, top), stroke)
-        drawLine(SafetyYellow, Offset(left, top), Offset(left, top + bracket), stroke)
-        drawLine(SafetyYellow, Offset(left + box, top), Offset(left + box - bracket, top), stroke)
-        drawLine(SafetyYellow, Offset(left + box, top), Offset(left + box, top + bracket), stroke)
-        drawLine(SafetyYellow, Offset(left, top + box), Offset(left + bracket, top + box), stroke)
-        drawLine(SafetyYellow, Offset(left, top + box), Offset(left, top + box - bracket), stroke)
-        drawLine(SafetyYellow, Offset(left + box, top + box), Offset(left + box - bracket, top + box), stroke)
-        drawLine(SafetyYellow, Offset(left + box, top + box), Offset(left + box, top + box - bracket), stroke)
+        drawLine(Indigo, Offset(left, top), Offset(left + bracket, top), stroke)
+        drawLine(Indigo, Offset(left, top), Offset(left, top + bracket), stroke)
+        drawLine(Indigo, Offset(left + box, top), Offset(left + box - bracket, top), stroke)
+        drawLine(Indigo, Offset(left + box, top), Offset(left + box, top + bracket), stroke)
+        drawLine(Indigo, Offset(left, top + box), Offset(left + bracket, top + box), stroke)
+        drawLine(Indigo, Offset(left, top + box), Offset(left, top + box - bracket), stroke)
+        drawLine(Indigo, Offset(left + box, top + box), Offset(left + box - bracket, top + box), stroke)
+        drawLine(Indigo, Offset(left + box, top + box), Offset(left + box, top + box - bracket), stroke)
 
         val y = top + box * progress
         drawLine(
-            color = SafetyYellow.copy(alpha = 0.85f),
+            color = Indigo.copy(alpha = 0.85f),
             start = Offset(left + 6.dp.toPx(), y),
             end = Offset(left + box - 6.dp.toPx(), y),
             strokeWidth = 1.5.dp.toPx()
