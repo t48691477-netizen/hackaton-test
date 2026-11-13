@@ -87,7 +87,7 @@ export async function authenticateAccessKey(
   if (!isValidAccessKeyFormat(accessKey)) {
     throw new AuthError(
       'invalid_format',
-      'Ключ должен состоять из 10 символов: латинские буквы и цифры.',
+      `Ключ должен состоять из 10 символов: латинские буквы и цифры. Введено ${accessKey.length}.`,
     );
   }
 

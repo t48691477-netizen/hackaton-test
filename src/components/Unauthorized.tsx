@@ -218,8 +218,8 @@ export function Unauthorized() {
                     id="login-hint"
                     className="mt-3 font-mono text-[10px] leading-5 tracking-[0.04em] text-faint"
                   >
-                    Демо-ключ директора — в README, раздел «Быстрый старт».
-                    Ключи сотрудников приходят на email после создания.
+                    Демо-ключ директора: PSCDRT2345. Ключи сотрудников
+                    приходят на email после создания.
                   </p>
                 )}
               </div>
