@@ -31,6 +31,7 @@ import {
 } from '../lib/employees';
 import { ROLE_LABELS } from '../lib/roles';
 import { useMediaQuery } from '../lib/useMediaQuery';
+import { useFocusTrap } from '../lib/useFocusTrap';
 import {
   provisionEmployee,
   reissueEmployeeAccess,
@@ -125,6 +126,7 @@ function InvitationLine({ employee }: { employee: Employee }) {
 interface KeyDeliveryDialogProps {
   employee: Employee;
   invitation: AccessKeyEmailResult;
+  restoreFocus: () => void;
   onClose: () => void;
 }
 
@@ -135,37 +137,25 @@ interface KeyDeliveryDialogProps {
 function KeyDeliveryDialog({
   employee,
   invitation,
+  restoreFocus,
   onClose,
 }: KeyDeliveryDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  useFocusTrap(dialogRef, {
+    initialFocus: 'button[aria-label="Закрыть окно"]',
+    onEscape: onClose,
+    restoreFocus,
+  });
+
   useEffect(() => {
-    const previousFocus =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    const timer = window.setTimeout(() => {
-      dialogRef.current?.querySelector<HTMLElement>('button')?.focus();
-    }, 0);
-
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = previousOverflow;
-      window.clearTimeout(timer);
-      previousFocus?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   const failed = invitation.status === 'failed';
   const sent = invitation.status === 'sent';
@@ -177,11 +167,10 @@ function KeyDeliveryDialog({
 
   return createPortal(
     <div className="fixed inset-0 z-[60] grid place-items-center px-4 py-6">
-      <button
-        type="button"
+      <div
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-black/45"
-        aria-label="Закрыть окно"
+        className="absolute inset-0 bg-black/45"
+        aria-hidden="true"
       />
 
       <div
@@ -284,6 +273,7 @@ function KeyDeliveryDialog({
 interface AddEmployeeModalProps {
   existingEmails: ReadonlySet<string>;
   canCreateAdmin: boolean;
+  restoreFocus: () => void;
   onClose: () => void;
   onCreated: (result: ProvisionedEmployee) => void;
 }
@@ -291,6 +281,7 @@ interface AddEmployeeModalProps {
 function AddEmployeeModal({
   existingEmails,
   canCreateAdmin,
+  restoreFocus,
   onClose,
   onCreated,
 }: AddEmployeeModalProps) {
@@ -320,55 +311,22 @@ function AddEmployeeModal({
           : '',
   };
 
+  useFocusTrap(dialogRef, {
+    initialFocus: 'input',
+    onEscape: () => {
+      if (!submittingRef.current) onClose();
+    },
+    restoreFocus,
+  });
+
   useEffect(() => {
-    const previousFocus =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        if (!submittingRef.current) {
-          onClose();
-        }
-        return;
-      }
-
-      if (event.key !== 'Tab') return;
-
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-      );
-
-      if (!focusable?.length) return;
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    const focusTimer = window.setTimeout(() => {
-      dialogRef.current?.querySelector<HTMLElement>('input')?.focus();
-    }, 0);
-
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = previousOverflow;
-      window.clearTimeout(focusTimer);
-      previousFocus?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -656,6 +614,7 @@ export function Users() {
   const [delivery, setDelivery] = useState<ProvisionedEmployee | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
+  const addEmployeeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const refresh = () => setEmployees(loadEmployees());
@@ -678,6 +637,7 @@ export function Users() {
   );
 
   const closeModal = useCallback(() => setModalOpen(false), []);
+  const closeDelivery = useCallback(() => setDelivery(null), []);
 
   const persist = useCallback((next: Employee[]): boolean => {
     if (!saveEmployees(next)) {
@@ -794,6 +754,7 @@ export function Users() {
         description="Каждый сотрудник входит по индивидуальному 10-значному ключу. Ключ создаётся автоматически, отправляется на email сотрудника и не показывается администратору."
         aside={
           <button
+            ref={addEmployeeButtonRef}
             type="button"
             onClick={() => setModalOpen(true)}
             className="btn-primary"
@@ -1048,6 +1009,7 @@ export function Users() {
         <AddEmployeeModal
           existingEmails={existingEmails}
           canCreateAdmin={role === 'director'}
+          restoreFocus={() => addEmployeeButtonRef.current?.focus()}
           onClose={closeModal}
           onCreated={handleCreated}
         />
@@ -1057,7 +1019,8 @@ export function Users() {
         <KeyDeliveryDialog
           employee={delivery.employee}
           invitation={delivery.invitation}
-          onClose={() => setDelivery(null)}
+          restoreFocus={() => addEmployeeButtonRef.current?.focus()}
+          onClose={closeDelivery}
         />
       ) : null}
     </div>

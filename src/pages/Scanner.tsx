@@ -873,15 +873,19 @@ function LiveReport({
                     />
                   </div>
 
-                  {active ? (
-                    <div className="mt-2 flex gap-2 text-[11px] leading-5 text-muted">
-                      <Wrench
-                        className="mt-1 h-3 w-3 shrink-0 text-faint"
-                        aria-hidden="true"
-                      />
-                      <span>{defect.recommendation}</span>
-                    </div>
-                  ) : null}
+                  <div
+                    aria-hidden={!active}
+                    data-defect-recommendation
+                    className={`mt-2 flex h-10 gap-2 overflow-hidden text-[11px] leading-5 text-muted ${
+                      active ? '' : 'invisible'
+                    }`}
+                  >
+                    <Wrench
+                      className="mt-1 h-3 w-3 shrink-0 text-faint"
+                      aria-hidden="true"
+                    />
+                    <span className="line-clamp-2">{defect.recommendation}</span>
+                  </div>
                 </button>
               );
             })}
@@ -1369,7 +1373,7 @@ export function Scanner() {
             <button
               type="button"
               onClick={handleReset}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-faint transition-colors hover:text-ink"
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 px-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted transition-colors hover:text-ink"
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
               Сбросить

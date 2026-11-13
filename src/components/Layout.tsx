@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   ChevronRight,
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useRole } from '../context/RoleContext';
+import { useFocusTrap } from '../lib/useFocusTrap';
 import {
   ROLE_LABELS,
   ROLE_SHORT_LABELS,
@@ -69,6 +70,7 @@ const TODAY = new Intl.DateTimeFormat('ru-RU', {
 interface MobileNavProps {
   role: Role;
   accountName: string;
+  triggerRef: { current: HTMLButtonElement | null };
   onClose: () => void;
   onLogout: () => void;
 }
@@ -76,21 +78,29 @@ interface MobileNavProps {
 function MobileNav({
   role,
   accountName,
+  triggerRef,
   onClose,
   onLogout,
 }: MobileNavProps) {
   const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(role));
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(dialogRef, {
+    initialFocus: 'nav a[href]',
+    onEscape: onClose,
+    restoreFocus: () => triggerRef.current?.focus(),
+  });
 
   return (
     <div className="fixed inset-0 z-50 lg:hidden">
-      <button
-        type="button"
+      <div
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-black/40"
-        aria-label="Закрыть меню"
+        className="absolute inset-0 bg-black/40"
+        aria-hidden="true"
       />
 
       <div
+        ref={dialogRef}
         id="mobile-navigation"
         role="dialog"
         aria-modal="true"
@@ -206,6 +216,7 @@ export function Layout() {
   const { role, session, clearRole } = useRole();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -219,17 +230,8 @@ export function Layout() {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setMobileOpen(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [mobileOpen]);
 
@@ -362,6 +364,7 @@ export function Layout() {
             </div>
 
             <button
+              ref={mobileTriggerRef}
               type="button"
               onClick={clearRole}
               className="btn-icon hidden border-0 sm:inline-flex"
@@ -409,6 +412,7 @@ export function Layout() {
         <MobileNav
           role={role}
           accountName={session?.fullName ?? ROLE_LABELS[role]}
+          triggerRef={mobileTriggerRef}
           onClose={() => setMobileOpen(false)}
           onLogout={clearRole}
         />

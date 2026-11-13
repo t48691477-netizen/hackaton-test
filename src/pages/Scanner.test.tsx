@@ -301,6 +301,31 @@ describe('веб-сканер', () => {
     expect(within(specs).queryByText('Толщина стенки')).not.toBeInTheDocument();
   });
 
+  it('не меняет раскладку списка дефектов при выборе строки', async () => {
+    await startLiveWithTimers();
+    await advanceTime(500);
+
+    const firstRow = screen.getByRole('button', {
+      name: /^Дефект: Трещина корпуса, уверенность/i,
+    });
+    const secondRow = screen.getByRole('button', {
+      name: /^Дефект: Износ крепления, уверенность/i,
+    });
+    const firstRecommendation = firstRow.querySelector('[data-defect-recommendation]');
+    const secondRecommendation = secondRow.querySelector('[data-defect-recommendation]');
+
+    expect(firstRecommendation).toHaveAttribute('aria-hidden', 'true');
+    expect(secondRecommendation).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.mouseEnter(firstRow);
+    expect(firstRecommendation).toHaveAttribute('aria-hidden', 'false');
+    expect(secondRecommendation).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.mouseLeave(firstRow);
+    expect(firstRecommendation).toHaveAttribute('aria-hidden', 'true');
+    expect(secondRecommendation).toHaveAttribute('aria-hidden', 'true');
+  });
+
   it('показывает характеристики соответствующего узла при наведении на рамку', async () => {
     await startLiveWithTimers();
     await advanceTime(500);

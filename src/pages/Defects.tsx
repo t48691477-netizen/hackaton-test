@@ -219,7 +219,7 @@ export function Defects() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className="btn-secondary h-9 px-3 text-xs"
+              className="btn-secondary min-h-11 px-3 text-xs"
               onClick={() => setLoadAttempt((value) => value + 1)}
               disabled={loading}
               aria-busy={loading}
@@ -431,7 +431,7 @@ export function Defects() {
                           target="_blank"
                           rel="noreferrer"
                           aria-label={`Открыть задачу ${defect.id}`}
-                          className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.08em] text-muted underline-offset-2 transition-colors hover:text-ink hover:underline"
+                          className="inline-flex min-h-11 items-center gap-1 py-2 pr-2 font-mono text-[11px] uppercase tracking-[0.06em] text-soft underline-offset-2 transition-colors hover:text-ink hover:underline"
                         >
                           Открыть
                           <ExternalLink className="h-3 w-3" aria-hidden="true" />

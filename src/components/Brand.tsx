@@ -36,7 +36,7 @@ export function Brand({ to = '/scanner', onClick, className = '' }: BrandProps) 
     <Link
       to={to}
       onClick={onClick}
-      className={`group inline-flex items-center gap-3 rounded-sm transition-colors ${className}`}
+      className={`group inline-flex min-h-11 items-center gap-3 rounded-sm transition-colors ${className}`}
       aria-label="ПромСкан — на главную"
     >
       <span className="grid h-9 w-9 shrink-0 place-items-center border border-line-strong text-accent transition-colors duration-150 group-hover:border-accent/60">
