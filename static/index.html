@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ТОиР Эксперт AI — Панель тестирования</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-hover: #0ea5e9;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --accent: #818cf8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 20px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    h1 { font-size: 1.4rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .nav-links { display: flex; gap: 10px; }
+    .btn {
+      background: var(--primary);
+      color: #0f172a;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: var(--primary-hover); }
+    .btn-secondary { background: #334155; color: var(--text); }
+    .btn-secondary:hover { background: #475569; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #16a34a; }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    .tab-btn.active {
+      background: var(--card-bg);
+      color: var(--primary);
+      border-color: var(--border);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      margin-bottom: 20px;
+    }
+    .card h2 { font-size: 1.15rem; margin-bottom: 14px; font-weight: 600; color: var(--primary); }
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px; }
+    input, select, textarea {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 9px 12px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--primary); }
+
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      background: #0f172a;
+      transition: border-color 0.2s;
+    }
+    .dropzone:hover { border-color: var(--primary); }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge-high { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; }
+    .badge-medium { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b; }
+    .badge-low { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; }
+
+    .img-preview-box {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .img-preview-box img {
+      width: 100%;
+      height: 240px;
+      object-fit: contain;
+      background: #000;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .img-caption { font-size: 0.75rem; text-align: center; color: var(--text-muted); margin-top: 4px; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85rem; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+    th { color: var(--text-muted); font-weight: 600; }
+    tr:hover { background: rgba(255,255,255,0.02); }
+
+    .rec-item {
+      background: #0f172a;
+      padding: 8px 12px;
+      border-left: 3px solid var(--primary);
+      margin-bottom: 6px;
+      border-radius: 0 4px 4px 0;
+      font-size: 0.85rem;
+    }
+
+    .status-pill {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .status-operational { background: var(--success); }
+    .status-warning { background: var(--warning); }
+    .status-maintenance { background: var(--danger); }
+
+    #loading {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      color: var(--primary);
+      font-weight: 500;
+      margin-top: 10px;
+    }
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🏭 ТОиР Эксперт AI <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted);">Инспекция агрегатов &middot; YOLO + LLM</span></h1>
+    <div class="nav-links">
+      <a href="/docs" target="_blank" class="btn btn-secondary">Swagger UI (/docs)</a>
+      <a href="/openapi.json" target="_blank" class="btn btn-secondary">openapi.json</a>
+      <button class="btn btn-secondary" onclick="checkHealth()">Статус системы</button>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('inspect')">🔬 Диагностика (AI Инспекция)</button>
+    <button class="tab-btn" onclick="switchTab('equipment')">⚙️ Оборудование и узлы</button>
+    <button class="tab-btn" onclick="switchTab('reports')">📋 Журнал диспетчера (Акты)</button>
+  </div>
+
+  <!-- TAB 1: INSPECTION -->
+  <div id="tab-inspect" class="tab-content active">
+    <div class="grid">
+      <!-- Input Card -->
+      <div class="card">
+        <h2>1. Загрузка фото на дефектоскопию</h2>
+        <div class="form-group">
+          <label>Выберите агрегат для привязки контекста:</label>
+          <select id="inspect-equipment-select" onchange="onInspectEquipmentChange()">
+            <option value="">Загрузка списка оборудования...</option>
+          </select>
+        </div>
+        <div id="equipment-context-info" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 14px;"></div>
+
+        <div class="form-group">
+          <label>Фотография узла / сварного шва / металлоконструкции:</label>
+          <div class="dropzone" onclick="document.getElementById('file-input').click()">
+            <p id="dropzone-text">📁 Нажмите для выбора фото или перетащите файл сюда</p>
+            <input type="file" id="file-input" accept="image/*" style="display:none" onchange="onFileSelected(event)">
+          </div>
+        </div>
+
+        <button class="btn" style="width: 100%; padding: 12px;" onclick="runInspection()">
+          🚀 Запустить диагностику (YOLO Seg + Det + Эксперт ТОиР)
+        </button>
+
+        <div id="loading">
+          <div class="spinner"></div>
+          <span>Инференс нейросетей YOLO и генерация экспертного заключения LLM...</span>
+        </div>
+      </div>
+
+      <!-- Result Card -->
+      <div class="card" id="results-card" style="display: none;">
+        <h2>2. Результаты AI анализа</h2>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div>
+            <span style="font-size: 0.9rem; color: var(--text-muted);">Критичность:</span>
+            <span id="res-criticality" class="badge"></span>
+          </div>
+          <div>
+            <span style="font-size: 0.85rem; color: var(--text-muted);">Дефектов найдено:</span>
+            <strong id="res-defects-count">0</strong>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Предполагаемая причина (LLM Эксперт):</label>
+          <p id="res-cause" style="font-size: 0.88rem; background: #0f172a; padding: 10px; border-radius: 6px;"></p>
+        </div>
+
+        <div class="form-group">
+          <label>Пошаговые рекомендации Главного эксперта ТОиР:</label>
+          <div id="res-recommendations"></div>
+        </div>
+
+        <div class="img-preview-box">
+          <div>
+            <img id="res-orig-img" src="" alt="Оригинал">
+            <div class="img-caption">Исходное фото</div>
+          </div>
+          <div>
+            <img id="res-annotated-img" src="" alt="Разметка">
+            <div class="img-caption">Разметка детекции и сегментации</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);">
+          <label>Зарегистрировать акт в журнале диспетчера:</label>
+          <div style="display: flex; gap: 10px; margin-top: 8px;">
+            <select id="report-status-select" style="max-width: 200px;">
+              <option value="pending">Ожидает ремонта (pending)</option>
+              <option value="in_progress">В работе ТОиР (in_progress)</option>
+              <option value="completed">Устранено (completed)</option>
+            </select>
+            <button class="btn btn-success" onclick="createReportFromCurrentInspection()">
+              💾 Сохранить акт осмотра
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Defects detailed list -->
+    <div class="card" id="defects-table-card" style="display:none;">
+      <h2>Конвертированные данные дефектов (Вывод YOLOOutputConverter)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Метка</th>
+            <th>Категория</th>
+            <th>Уверенность</th>
+            <th>Бокс [x_min, y_min, x_max, y_max]</th>
+            <th>Маска (точки [x,y])</th>
+            <th>Модель</th>
+          </tr>
+        </thead>
+        <tbody id="defects-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TAB 2: EQUIPMENT -->
+  <div id="tab-equipment" class="tab-content">
+    <div class="grid">
+      <div class="card">
+        <h2>Реестр агрегатов предприятия</h2>
+        <div id="equipment-list"></div>
+      </div>
+
+      <div class="card">
+        <h2 id="eq-card-title">Детальная карточка узлов</h2>
+        <div id="equipment-details" style="color: var(--text-muted); font-size: 0.9rem;">
+          Выберите агрегат слева для просмотра узлов.
+        </div>
+      </div>
+    </div>
+
+    <!-- Create equipment card -->
+    <div class="card">
+      <h2>Добавить / Отредактировать агрегат (POST /api/equipment)</h2>
+      <div class="grid">
+        <div>
+          <div class="form-group">
+            <label>ID оборудования (латиница):</label>
+            <input type="text" id="new-eq-id" placeholder="turbine_tg_02">
+          </div>
+          <div class="form-group">
+            <label>Наименование:</label>
+            <input type="text" id="new-eq-name" placeholder="Турбогенератор ТГ-50">
+          </div>
+          <div class="form-group">
+            <label>Серийный номер:</label>
+            <input type="text" id="new-eq-sn" placeholder="SN-2021-TG50-01">
+          </div>
+          <div class="form-group">
+            <label>Цех / Участок:</label>
+            <input type="text" id="new-eq-loc" placeholder="Турбинный цех, ячейка 2">
+          </div>
+        </div>
+        <div>
+          <div class="form-group">
+            <label>Дата ввода в эксплуатацию (ГГГГ-ММ-ДД):</label>
+            <input type="text" id="new-eq-date" placeholder="2021-03-15">
+          </div>
+          <div class="form-group">
+            <label>Возраст узлов (текст):</label>
+            <input type="text" id="new-eq-age" placeholder="4 года 8 месяцев">
+          </div>
+          <div class="form-group">
+            <label>Дата последнего ТО:</label>
+            <input type="text" id="new-eq-last-to" placeholder="2026-06-01">
+          </div>
+          <div class="form-group">
+            <label>Статус:</label>
+            <select id="new-eq-status">
+              <option value="operational">В работе (operational)</option>
+              <option value="warning">Предупреждение (warning)</option>
+              <option value="maintenance">На ремонте (maintenance)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <button class="btn" onclick="saveNewEquipment()">💾 Сохранить агрегат в БД</button>
+    </div>
+  </div>
+
+  <!-- TAB 3: REPORTS -->
+  <div id="tab-reports" class="tab-content">
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+        <h2>Журнал актов осмотра (Диспетчер ТОиР)</h2>
+        <div style="display: flex; gap: 8px;">
+          <select id="report-filter-status" onchange="loadReports()" style="max-width: 220px;">
+            <option value="">Все статусы</option>
+            <option value="pending">Ожидает ремонта (pending)</option>
+            <option value="in_progress">В работе (in_progress)</option>
+            <option value="completed">Завершено (completed)</option>
+          </select>
+          <button class="btn btn-secondary" onclick="loadReports()">🔄 Обновить</button>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Номер акта</th>
+            <th>Агрегат</th>
+            <th>Дата</th>
+            <th>Статус</th>
+            <th>Дефектов</th>
+            <th>Критичность</th>
+            <th>Причина</th>
+            <th>Фото</th>
+          </tr>
+        </thead>
+        <tbody id="reports-tbody">
+          <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Загрузка журнала...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let currentInspection = null;
+    let equipmentMap = {};
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('tab-' + tab).classList.add('active');
+      if (tab === 'equipment') loadEquipmentList();
+      if (tab === 'reports') loadReports();
+    }
+
+    async function checkHealth() {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        alert(`Статус системы: ${data.status}\nМодель коррозии: ${data.models.corrosion_segmentation ? 'Готова' : 'Ошибка'}\nМодель сварки: ${data.models.welding_defect_detection ? 'Готова' : 'Ошибка'}`);
+      } catch (e) {
+        alert('Ошибка проверки здоровья сервера: ' + e);
+      }
+    }
+
+    async function loadEquipmentForSelect() {
+      try {
+        const res = await fetch('/api/equipment');
+        const list = await res.json();
+        const sel = document.getElementById('inspect-equipment-select');
+        sel.innerHTML = '';
+        equipmentMap = {};
+        list.forEach(eq => {
+          equipmentMap[eq.id] = eq;
+          const opt = document.createElement('option');
+          opt.value = eq.id;
+          opt.textContent = `${eq.name} (${eq.location})`;
+          sel.appendChild(opt);
+        });
+        onInspectEquipmentChange();
+      } catch (e) {
+        console.error('Ошибка загрузки оборудования:', e);
+      }
+    }
+
+    function onInspectEquipmentChange() {
+      const id = document.getElementById('inspect-equipment-select').value;
+      const eq = equipmentMap[id];
+      const box = document.getElementById('equipment-context-info');
+      if (eq) {
+        box.innerHTML = `📌 Серийный №: <b>${eq.serial_number}</b> &middot; Наработка узлов: <b>${eq.component_age}</b> &middot; Последнее ТО: <b>${eq.last_maintenance_date}</b> &middot; Узлов: <b>${eq.components.length}</b>`;
+      } else {
+        box.innerHTML = '';
+      }
+    }
+
+    function onFileSelected(event) {
+      const file = event.target.files[0];
+      if (file) {
+        document.getElementById('dropzone-text').innerHTML = `✅ Выбран файл: <b>${file.name}</b> (${Math.round(file.size / 1024)} KB)`;
+      }
+    }
+
+    async function runInspection() {
+      const eqId = document.getElementById('inspect-equipment-select').value;
+      const fileInput = document.getElementById('file-input');
+      if (!fileInput.files || fileInput.files.length === 0) {
+        alert('Пожалуйста, выберите фото для проверки!');
+        return;
+      }
+      if (!eqId) {
+        alert('Пожалуйста, выберите оборудование!');
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      fd.append('equipment_id', eqId);
+
+      document.getElementById('loading').style.display = 'flex';
+      document.getElementById('results-card').style.display = 'none';
+      document.getElementById('defects-table-card').style.display = 'none';
+
+      try {
+        const res = await fetch('/api/inspect', {
+          method: 'POST',
+          body: fd
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Ошибка сервера');
+        }
+        currentInspection = await res.json();
+        renderInspectionResult(currentInspection);
+      } catch (e) {
+        alert('Ошибка при инспекции: ' + e.message);
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    function renderInspectionResult(data) {
+      document.getElementById('results-card').style.display = 'block';
+      document.getElementById('res-defects-count').textContent = data.defects_count;
+
+      const critBadge = document.getElementById('res-criticality');
+      critBadge.textContent = data.expert_opinion.criticality;
+      critBadge.className = 'badge badge-' + data.expert_opinion.criticality.toLowerCase();
+
+      document.getElementById('res-cause').textContent = data.expert_opinion.probable_cause;
+
+      const recContainer = document.getElementById('res-recommendations');
+      recContainer.innerHTML = '';
+      data.expert_opinion.recommendations.forEach(r => {
+        const d = document.createElement('div');
+        d.className = 'rec-item';
+        d.textContent = r;
+        recContainer.appendChild(d);
+      });
+
+      document.getElementById('res-orig-img').src = data.image_url;
+      document.getElementById('res-annotated-img').src = data.annotated_image_url || data.image_url;
+
+      // Таблица дефектов
+      const tableCard = document.getElementById('defects-table-card');
+      const tbody = document.getElementById('defects-tbody');
+      tbody.innerHTML = '';
+
+      if (data.defects && data.defects.length > 0) {
+        tableCard.style.display = 'block';
+        data.defects.forEach(d => {
+          const tr = document.createElement('tr');
+          const polyInfo = d.polygon ? `${d.polygon.length} точек` : '—';
+          tr.innerHTML = `
+            <td><code>${d.id}</code></td>
+            <td><b>${d.label}</b></td>
+            <td><span class="badge ${d.category === 'corrosion' ? 'badge-high' : 'badge-medium'}">${d.category}</span></td>
+            <td>${(d.confidence * 100).toFixed(1)}%</td>
+            <td><code>[${d.bbox.join(', ')}]</code></td>
+            <td>${polyInfo}</td>
+            <td style="font-size:0.75rem; color: var(--text-muted);">${d.model_source}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } else {
+        tableCard.style.display = 'block';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--text-muted);">Дефектов не обнаружено. Оборудование в норме.</td></tr>';
+      }
+    }
+
+    async function createReportFromCurrentInspection() {
+      if (!currentInspection) return;
+      const status = document.getElementById('report-status-select').value;
+      const payload = {
+        equipment_id: currentInspection.equipment_id,
+        repair_status: status,
+        dispatcher_notes: "Акт сформирован оператором из панели тестирования",
+        defects: currentInspection.defects,
+        expert_opinion: currentInspection.expert_opinion,
+        photo_url: currentInspection.image_url,
+        final_photo_url: currentInspection.annotated_image_url
+      };
+
+      try {
+        const res = await fetch('/api/reports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const act = await res.json();
+          alert(`Акт осмотра успешно зарегистрирован!\nID: ${act.id}\nСтатус: ${act.repair_status}`);
+        } else {
+          alert('Ошибка при сохранении акта');
+        }
+      } catch (e) {
+        alert('Сетевая ошибка: ' + e);
+      }
+    }
+
+    async function loadEquipmentList() {
+      try {
+        const res = await fetch('/api/equipment');
+        const list = await res.json();
+        const container = document.getElementById('equipment-list');
+        container.innerHTML = '';
+        list.forEach(eq => {
+          const div = document.createElement('div');
+          div.style.cssText = 'padding: 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; cursor: pointer; background: #0f172a;';
+          div.innerHTML = `
+            <div style="display:flex; justify-content:space-between;">
+              <b>${eq.name}</b>
+              <span class="badge badge-low">${eq.status}</span>
+            </div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
+              ID: ${eq.id} &middot; Проверок: ${eq.inspection_count} &middot; Последнее ТО: ${eq.last_maintenance_date}
+            </div>
+          `;
+          div.onclick = () => showEquipmentDetail(eq.id);
+          container.appendChild(div);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function showEquipmentDetail(id) {
+      try {
+        const res = await fetch('/api/equipment/' + id);
+        const eq = await res.json();
+        document.getElementById('eq-card-title').textContent = eq.name;
+        let html = `
+          <p><b>ID:</b> ${eq.id}</p>
+          <p><b>Серийный номер:</b> ${eq.serial_number}</p>
+          <p><b>Расположение:</b> ${eq.location}</p>
+          <p><b>Возраст агрегата:</b> ${eq.component_age}</p>
+          <p><b>Дата последнего ТО:</b> ${eq.last_maintenance_date}</p>
+          <p><b>Счетчик инспекций:</b> ${eq.inspection_count}</p>
+          <h3 style="margin-top:14px; font-size:1rem; color:var(--primary);">Узлы агрегата (${eq.components.length}):</h3>
+        `;
+        eq.components.forEach(c => {
+          html += `
+            <div style="background:#0f172a; padding:8px; border-radius:4px; margin-top:6px; font-size:0.85rem;">
+              <b>${c.name}</b> (${c.type})<br>
+              <span style="color:var(--text-muted);">Наработка: ${c.age_months} мес &middot; Коэф. ответственности: ${c.criticality_factor}</span>
+            </div>
+          `;
+        });
+        document.getElementById('equipment-details').innerHTML = html;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function saveNewEquipment() {
+      const payload = {
+        id: document.getElementById('new-eq-id').value || null,
+        name: document.getElementById('new-eq-name').value,
+        serial_number: document.getElementById('new-eq-sn').value,
+        location: document.getElementById('new-eq-loc').value,
+        installation_date: document.getElementById('new-eq-date').value,
+        component_age: document.getElementById('new-eq-age').value,
+        last_maintenance_date: document.getElementById('new-eq-last-to').value,
+        status: document.getElementById('new-eq-status').value,
+        components: [
+          {
+            id: "comp_main_01",
+            name: "Основной рабочий узел",
+            type: "Механический/гидравлический",
+            installation_date: document.getElementById('new-eq-date').value || "2024-01-01",
+            age_months: 24,
+            criticality_factor: 1.5
+          }
+        ]
+      };
+
+      if (!payload.name || !payload.serial_number) {
+        alert('Заполните наименование и серийный номер!');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/equipment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          alert('Агрегат успешно сохранен в базе!');
+          loadEquipmentList();
+          loadEquipmentForSelect();
+        } else {
+          alert('Ошибка при сохранении агрегата');
+        }
+      } catch (e) {
+        alert('Ошибка: ' + e);
+      }
+    }
+
+    async function loadReports() {
+      const statusFilter = document.getElementById('report-filter-status').value;
+      let url = '/api/reports';
+      if (statusFilter) url += '?repair_status=' + statusFilter;
+
+      try {
+        const res = await fetch(url);
+        const list = await res.json();
+        const tbody = document.getElementById('reports-tbody');
+        tbody.innerHTML = '';
+        if (list.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Актов не найдено</td></tr>';
+          return;
+        }
+        list.forEach(r => {
+          const tr = document.createElement('tr');
+          const crit = r.expert_opinion ? r.expert_opinion.criticality : '—';
+          const cause = r.expert_opinion ? r.expert_opinion.probable_cause.substring(0, 60) + '...' : '—';
+          const photoThumb = r.photo_url ? `<a href="${r.photo_url}" target="_blank"><img src="${r.photo_url}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></a>` : '—';
+          tr.innerHTML = `
+            <td><code>${r.id}</code></td>
+            <td><b>${r.equipment_name}</b></td>
+            <td>${r.created_at.substring(0, 10)}</td>
+            <td><span class="badge ${r.repair_status === 'completed' ? 'badge-low' : 'badge-medium'}">${r.repair_status}</span></td>
+            <td>${r.defects_count}</td>
+            <td><span class="badge badge-${crit.toLowerCase()}">${crit}</span></td>
+            <td style="font-size:0.8rem; color:var(--text-muted);">${cause}</td>
+            <td>${photoThumb}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // Инициализация при загрузке
+    loadEquipmentForSelect();
+  </script>
+</body>
+</html>

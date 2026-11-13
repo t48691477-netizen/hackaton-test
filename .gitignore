@@ -26,3 +26,14 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Python / AI pipeline
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+data/*.db
+weights/*.pt
+static/uploads/*.jpg
+!static/uploads/sample_test.jpg
+
