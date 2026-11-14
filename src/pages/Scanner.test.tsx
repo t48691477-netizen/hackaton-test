@@ -6,8 +6,10 @@ import { RoleProvider } from '../context/RoleContext';
 import * as api from '../lib/api';
 import { MOCK_ENGINEERS } from '../lib/employees';
 import {
+  MOCK_EQUIPMENT,
   createMockInspection,
   type DetailedAnalysisResult,
+  type EquipmentDetail,
   type Report,
 } from '../lib/inspection';
 import { SESSION_STORAGE_KEY } from '../lib/session';
@@ -25,6 +27,7 @@ const originalUseMock = api.API_CONFIG.useMock;
 const stopTrack = vi.fn();
 let inspectImageSpy: MockInstance<typeof api.inspectImage>;
 let createReportSpy: MockInstance<typeof api.createReport>;
+let equipmentSpy: MockInstance<typeof api.fetchEquipmentById>;
 let detailedAnalysisSpy: MockInstance<typeof api.requestDetailedAnalysis>;
 
 function savedReport(input: api.CreateReportInput): Report {
@@ -129,6 +132,7 @@ beforeEach(() => {
   stopTrack.mockClear();
   inspectImageSpy = vi.spyOn(api, 'inspectImage');
   createReportSpy = vi.spyOn(api, 'createReport');
+  equipmentSpy = vi.spyOn(api, 'fetchEquipmentById');
   detailedAnalysisSpy = vi.spyOn(api, 'requestDetailedAnalysis');
   Object.defineProperty(api.API_CONFIG, 'useMock', { configurable: true, value: true });
 
@@ -303,14 +307,18 @@ describe('веб-сканер', () => {
 
     expect(screen.getByText('Активная зона')).toBeInTheDocument();
     expect(screen.getByText('Корпус насоса')).toBeInTheDocument();
-    expect(screen.getByText('Толщина стенки')).toBeInTheDocument();
+    expect(await screen.findByText('Толщина стенки')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
     expect(screen.getByText('мм')).toBeInTheDocument();
     const specs = screen.getByRole('region', { name: 'Технические характеристики' });
     expect(specs).toHaveAttribute('data-mock', 'equipment-specs');
     expect(specs).toHaveAttribute('data-node-id', 'node-housing');
+    expect(specs).toHaveAttribute('data-equipment-id', MOCK_EQUIPMENT.id);
     expect(within(specs).getByText('демо · mock')).toBeInTheDocument();
     expect(within(specs).getByText(/Демо-характеристики узла/)).toBeInTheDocument();
+    expect(within(specs).getByText('Паспорт оборудования')).toBeInTheDocument();
+    expect(within(specs).getByText('ПромМаш')).toBeInTheDocument();
+    expect(equipmentSpy).toHaveBeenCalledWith(MOCK_EQUIPMENT.id);
     expect(within(specs).queryByText(/Длина трещины|Глубина трещины|Площадь дефекта/i)).not.toBeInTheDocument();
 
     fireEvent.mouseLeave(defectRow);
@@ -353,6 +361,7 @@ describe('веб-сканер', () => {
     const frame = screen.getByRole('button', { name: /^Рамка дефекта: Износ крепления, уверенность/i });
     expect(frame).toHaveAttribute('aria-controls', 'equipment-specs-panel');
     fireEvent.mouseEnter(frame);
+    await act(async () => {});
 
     const specs = screen.getByRole('region', { name: 'Технические характеристики' });
     expect(specs).toHaveAttribute('data-node-id', 'node-mount');
@@ -415,6 +424,95 @@ describe('веб-сканер', () => {
     expect(inspectImageSpy).toHaveBeenCalledTimes(1);
     await advanceTime(5400);
     expect(inspectImageSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('показывает загрузку паспорта и затем загруженные характеристики', async () => {
+    const pending = deferred<EquipmentDetail>();
+    equipmentSpy.mockReturnValueOnce(pending.promise);
+    renderScanner();
+    await screen.findAllByText('Распознавание активно');
+
+    const frame = await screen.findByRole(
+      'button',
+      { name: /^Рамка дефекта: Трещина корпуса, уверенность/i },
+      { timeout: 3000 },
+    );
+    fireEvent.mouseEnter(frame);
+
+    const specs = screen.getByRole('region', { name: 'Технические характеристики' });
+    expect(within(specs).getByRole('status')).toHaveTextContent('Загружаем паспорт оборудования');
+    expect(equipmentSpy).toHaveBeenCalledWith(MOCK_EQUIPMENT.id);
+
+    await act(async () => pending.resolve(MOCK_EQUIPMENT));
+
+    expect(await screen.findByText('Паспорт оборудования')).toBeInTheDocument();
+    expect(screen.getByText('Толщина стенки')).toBeInTheDocument();
+    expect(screen.getByText('Производитель')).toBeInTheDocument();
+  });
+
+  it('показывает ошибку загрузки паспорта и позволяет повторить запрос', async () => {
+    equipmentSpy
+      .mockRejectedValueOnce(new Error('Каталог недоступен'))
+      .mockResolvedValueOnce(MOCK_EQUIPMENT);
+    renderScanner();
+    await screen.findAllByText('Распознавание активно');
+
+    const frame = await screen.findByRole(
+      'button',
+      { name: /^Рамка дефекта: Трещина корпуса, уверенность/i },
+      { timeout: 3000 },
+    );
+    fireEvent.mouseEnter(frame);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Каталог недоступен');
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку' }));
+
+    expect(await screen.findByText('Паспорт оборудования')).toBeInTheDocument();
+    expect(equipmentSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('не показывает поздний ответ после ухода указателя с дефекта', async () => {
+    const pending = deferred<EquipmentDetail>();
+    equipmentSpy.mockReturnValueOnce(pending.promise);
+    renderScanner();
+    await screen.findAllByText('Распознавание активно');
+
+    const frame = await screen.findByRole(
+      'button',
+      { name: /^Рамка дефекта: Трещина корпуса, уверенность/i },
+      { timeout: 3000 },
+    );
+    fireEvent.mouseEnter(frame);
+    fireEvent.mouseLeave(frame);
+
+    await act(async () => pending.resolve(MOCK_EQUIPMENT));
+
+    expect(screen.queryByText('Паспорт оборудования')).not.toBeInTheDocument();
+    expect(screen.getByText(/Наведите курсор на рамку дефекта или строку ниже/i)).toBeInTheDocument();
+  });
+
+  it('сохраняет характеристики нового узла при быстром переключении рамки', async () => {
+    const pending = deferred<EquipmentDetail>();
+    equipmentSpy.mockReturnValueOnce(pending.promise);
+    await startLiveWithTimers();
+    await advanceTime(500);
+
+    const housingFrame = screen.getByRole('button', {
+      name: /^Рамка дефекта: Трещина корпуса, уверенность/i,
+    });
+    const mountFrame = screen.getByRole('button', {
+      name: /^Рамка дефекта: Износ крепления, уверенность/i,
+    });
+    fireEvent.mouseEnter(housingFrame);
+    fireEvent.mouseLeave(housingFrame);
+    fireEvent.mouseEnter(mountFrame);
+
+    await act(async () => pending.resolve(MOCK_EQUIPMENT));
+
+    const specs = screen.getByRole('region', { name: 'Технические характеристики' });
+    expect(specs).toHaveAttribute('data-node-id', 'node-mount');
+    expect(within(specs).getByText('Момент затяжки')).toBeInTheDocument();
+    expect(within(specs).queryByText('Толщина стенки')).not.toBeInTheDocument();
   });
 
   it('показывает, что детальный backend пока не подключён', async () => {

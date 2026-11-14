@@ -26,6 +26,7 @@ import { PageHeader } from '../components/PageHeader';
 import {
   API_CONFIG,
   createReport,
+  fetchEquipmentById,
   inspectImage,
   requestDetailedAnalysis,
 } from '../lib/api';
@@ -39,6 +40,7 @@ import {
   getEquipmentNode,
   type Defect,
   type DetailedAnalysisResult,
+  type EquipmentDetail,
   type EquipmentNode,
   type InspectionResult,
   type Report,
@@ -742,22 +744,106 @@ function LiveReport({
   onSelect,
 }: LiveReportProps) {
   const [reportResult, setReportResult] = useState<InspectionResult | null>(null);
+  const [equipmentState, setEquipmentState] = useState<{
+    equipmentId: string;
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    detail?: EquipmentDetail;
+    message?: string;
+  }>({ equipmentId: analysis.equipment.id, status: 'idle' });
+  const [equipmentRetry, setEquipmentRetry] = useState(0);
   const [detailedState, setDetailedState] = useState<{
     inspectionId: string;
     status: 'idle' | 'loading' | 'ready' | 'error';
     result?: DetailedAnalysisResult;
     message?: string;
   }>({ inspectionId: analysis.inspection_id, status: 'idle' });
+  const equipmentRequestIdRef = useRef(0);
+  const equipmentCacheRef = useRef(new Map<string, EquipmentDetail>());
+  const equipmentRequestsRef = useRef(new Map<string, Promise<EquipmentDetail>>());
   const detailedRequestIdRef = useRef(0);
   const reportButtonRef = useRef<HTMLButtonElement>(null);
+  const activeDefectId = activeDefect?.id ?? null;
   const activeMeta = activeDefect
     ? SEVERITY_META[activeDefect.severity]
     : null;
   const mockSpecs = API_CONFIG.useMock || analysis.meta.vision_mode === 'mock';
 
+  useEffect(() => {
+    const requestId = ++equipmentRequestIdRef.current;
+    const equipmentId = analysis.equipment.id;
+
+    if (!activeDefectId) {
+      setEquipmentState({ equipmentId, status: 'idle' });
+      return () => {
+        if (equipmentRequestIdRef.current === requestId) {
+          equipmentRequestIdRef.current += 1;
+        }
+      };
+    }
+
+    const cached = equipmentCacheRef.current.get(equipmentId);
+    if (cached) {
+      setEquipmentState({ equipmentId, status: 'ready', detail: cached });
+      return () => {
+        if (equipmentRequestIdRef.current === requestId) {
+          equipmentRequestIdRef.current += 1;
+        }
+      };
+    }
+
+    setEquipmentState({ equipmentId, status: 'loading' });
+    let request = equipmentRequestsRef.current.get(equipmentId);
+    if (!request) {
+      request = fetchEquipmentById(equipmentId).then((detail) => {
+        if (detail.id !== equipmentId) {
+          throw new Error('Сервис вернул паспорт другого оборудования.');
+        }
+        equipmentCacheRef.current.set(equipmentId, detail);
+        return detail;
+      }).finally(() => {
+        equipmentRequestsRef.current.delete(equipmentId);
+      });
+      equipmentRequestsRef.current.set(equipmentId, request);
+    }
+
+    void request.then((detail) => {
+      if (equipmentRequestIdRef.current === requestId) {
+        setEquipmentState({ equipmentId, status: 'ready', detail });
+      }
+    }).catch((requestError: unknown) => {
+      if (equipmentRequestIdRef.current === requestId) {
+        setEquipmentState({
+          equipmentId,
+          status: 'error',
+          message: requestError instanceof Error
+            ? requestError.message
+            : 'Не удалось загрузить паспорт оборудования.',
+        });
+      }
+    });
+
+    return () => {
+      if (equipmentRequestIdRef.current === requestId) {
+        equipmentRequestIdRef.current += 1;
+      }
+    };
+  }, [activeDefectId, analysis.equipment.id, equipmentRetry]);
+
   useEffect(() => () => {
+    equipmentRequestIdRef.current += 1;
     detailedRequestIdRef.current += 1;
   }, []);
+
+  const visibleEquipmentState = equipmentState.equipmentId === analysis.equipment.id
+    ? equipmentState
+    : { equipmentId: analysis.equipment.id, status: 'idle' as const };
+  const equipmentDetail = visibleEquipmentState.status === 'ready'
+    ? visibleEquipmentState.detail
+    : null;
+  const loadedNode = activeDefect && equipmentDetail
+    ? equipmentDetail.nodes.find((node) => node.id === activeDefect.node_id) ?? null
+    : null;
+  const displayedEquipment = equipmentDetail ?? analysis.equipment;
 
   const handleDetailedAnalysis = async () => {
     if (
@@ -813,12 +899,12 @@ function LiveReport({
 
       <div className="p-4 sm:p-5">
         <h2 className="text-lg font-medium leading-tight tracking-[-0.025em] text-ink sm:text-xl">
-          {analysis.equipment.name}
+          {displayedEquipment.name}
         </h2>
         <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
-          Инв. № {analysis.equipment.inventory_number} · ресурс{' '}
-          {analysis.equipment.service_life_years} лет · ТО{' '}
-          {formatDate(analysis.equipment.last_maintenance_at)}
+          Инв. № {displayedEquipment.inventory_number} · ресурс{' '}
+          {displayedEquipment.service_life_years} лет · ТО{' '}
+          {formatDate(displayedEquipment.last_maintenance_at)}
         </p>
 
         <div className="mt-4 border-l-2 border-accent pl-3 sm:mt-5 sm:pl-4">
@@ -885,7 +971,7 @@ function LiveReport({
           aria-labelledby="specs-heading"
           aria-describedby={mockSpecs ? 'equipment-specs-source' : undefined}
           data-mock={mockSpecs ? 'equipment-specs' : undefined}
-          data-equipment-id={analysis.equipment.id}
+          data-equipment-id={displayedEquipment.id}
           data-node-id={activeNode?.id}
         >
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line pb-2">
@@ -937,38 +1023,87 @@ function LiveReport({
                 </span>
               </div>
 
+              {visibleEquipmentState.status === 'loading' ? (
+                <p className="mt-3 flex items-center gap-2 border-y border-line py-3 text-xs text-muted" role="status" aria-live="polite">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" aria-hidden="true" />
+                  Загружаем паспорт оборудования…
+                </p>
+              ) : null}
+
+              {visibleEquipmentState.status === 'error' ? (
+                <div className="mt-3 border-y border-line py-3" role="alert">
+                  <p className="text-xs leading-5 text-danger">
+                    {visibleEquipmentState.message}
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-2 inline-flex min-h-9 items-center gap-2 text-xs font-medium text-ink underline decoration-line underline-offset-4 hover:decoration-ink"
+                    onClick={() => setEquipmentRetry((retry) => retry + 1)}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    Повторить загрузку
+                  </button>
+                </div>
+              ) : null}
+
+              {equipmentDetail ? (
+                <div className="mt-3 border-y border-line py-3">
+                  <p className="technical">Паспорт оборудования</p>
+                  <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
+                    <div>
+                      <dt className="text-[10px] text-muted">Модель</dt>
+                      <dd className="mt-0.5 text-xs font-medium text-ink">{equipmentDetail.model}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] text-muted">Производитель</dt>
+                      <dd className="mt-0.5 text-xs font-medium text-ink">{equipmentDetail.manufacturer}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] text-muted">Категория</dt>
+                      <dd className="mt-0.5 text-xs text-soft">{equipmentDetail.category}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] text-muted">Место установки</dt>
+                      <dd className="mt-0.5 text-xs text-soft">{equipmentDetail.location}</dd>
+                    </div>
+                  </dl>
+                </div>
+              ) : null}
+
               <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3">
                 <p className="technical">Узел</p>
                 <p className="text-right text-xs font-medium text-soft">
-                  {activeNode?.name ?? 'не определён'}
+                  {loadedNode?.name ?? activeNode?.name ?? 'не определён'}
                 </p>
               </div>
 
-              <SpecGrid
-                specs={
-                  activeNode?.specs.length
-                    ? activeNode.specs
-                    : analysis.equipment.specs
-                }
-              />
+              {visibleEquipmentState.status === 'ready' ? (
+                <SpecGrid
+                  specs={
+                    loadedNode?.specs.length
+                      ? loadedNode.specs
+                      : equipmentDetail?.specs ?? activeNode?.specs ?? analysis.equipment.specs
+                  }
+                />
+              ) : null}
 
               <dl className="mt-3 divide-y divide-line border-y border-line">
                 <div className="flex items-center justify-between gap-3 py-2">
                   <dt className="technical">Последнее ТО</dt>
                   <dd className="font-mono text-[10px] text-soft">
-                    {formatDate(analysis.equipment.last_maintenance_at)}
+                    {formatDate(displayedEquipment.last_maintenance_at)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3 py-2">
                   <dt className="technical">Следующее ТО</dt>
                   <dd className="font-mono text-[10px] text-soft">
-                    {formatDate(analysis.equipment.next_maintenance_at)}
+                    {formatDate(displayedEquipment.next_maintenance_at)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3 py-2">
                   <dt className="technical">Ресурс</dt>
                   <dd className="font-mono text-[10px] text-soft">
-                    {analysis.equipment.service_life_years} лет
+                    {displayedEquipment.service_life_years} лет
                   </dd>
                 </div>
               </dl>
