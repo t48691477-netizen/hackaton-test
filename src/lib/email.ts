@@ -14,6 +14,7 @@
  * без `access_key`.
  */
 
+import { API_CONFIG, sendAccessKeyMail } from './api';
 import type { InvitationState } from './employees';
 
 export const MOCK_OUTBOX_STORAGE_KEY = 'promscan:mail-outbox:v1';
@@ -131,6 +132,34 @@ function saveMockMessage(
 export async function sendAccessKeyEmail(
   input: AccessKeyEmailInput,
 ): Promise<AccessKeyEmailResult> {
+  if (!API_CONFIG.useMock) {
+    try {
+      const response = await sendAccessKeyMail({
+        to: input.to,
+        fullName: input.fullName,
+        role: input.role,
+        accessKey: input.accessKey,
+      });
+
+      return {
+        provider: 'smtp',
+        status: 'sent',
+        messageId: response.message_id,
+        error: null,
+      };
+    } catch (reason: unknown) {
+      return {
+        provider: 'smtp',
+        status: 'failed',
+        messageId: null,
+        error:
+          reason instanceof Error
+            ? reason.message
+            : 'Не удалось отправить письмо.',
+      };
+    }
+  }
+
   const confirmationCode = input.confirmationCode ?? createConfirmationCode();
   const message: MockEmailMessage = {
     id: createMessageId(),

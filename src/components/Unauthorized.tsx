@@ -201,10 +201,8 @@ export function Unauthorized() {
                     id="login-hint"
                     className="mt-3 text-xs leading-5 text-muted"
                   >
-                    Демо-ключ директора:{' '}
-                    <code className="font-mono text-ink">PSCDRT2345</code>.
-                    Ключи сотрудников
-                    приходят на email после создания.
+                    Ключ приходит на email после создания учётной записи.
+                    Нет ключа — обратитесь к директору.
                   </p>
                 )}
               </div>

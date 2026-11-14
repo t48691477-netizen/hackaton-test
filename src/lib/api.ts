@@ -305,6 +305,28 @@ export async function inspectImage(
   });
 }
 
+export interface AccessKeyMailPayload {
+  to: string;
+  fullName: string;
+  role: string;
+  accessKey: string;
+}
+
+export async function sendAccessKeyMail(
+  payload: AccessKeyMailPayload,
+): Promise<{ status: 'sent'; message_id: string }> {
+  return request('/api/mail/access-key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to: payload.to,
+      full_name: payload.fullName,
+      role: payload.role,
+      access_key: payload.accessKey,
+    }),
+  });
+}
+
 export interface DetailedAnalysisInput {
   image: Blob;
   inspection: InspectionResult;
