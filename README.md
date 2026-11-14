@@ -25,7 +25,7 @@
 ### Бэкенд
 
 Нужны Python 3.11+, GPU с CUDA и файлы моделей в `weights/` (в git не хранятся):
-`corrosion_yolov11_seg.pt`, `welding_yolov8_det.pt`, `oil_leaks.pt`.
+`defects_yolo.onnx` (одна обученная модель: сварка, трещины, масло, ржавчина; лежит в репозитории).
 
 ```bash
 pip install -r requirements.txt
