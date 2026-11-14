@@ -87,19 +87,19 @@ textarea:focus-visible {
   }
 
   .btn-primary {
-    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-sm bg-accent px-4 text-sm font-medium text-accent-ink transition duration-150 hover:-translate-y-px hover:bg-accent-hi active:translate-y-0 disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-accent px-4 text-sm font-medium text-accent-ink shadow-sm transition duration-150 hover:-translate-y-px hover:bg-accent-hi hover:shadow-md active:translate-y-0 active:shadow-sm disabled:pointer-events-none disabled:opacity-40;
   }
 
   .btn-secondary {
-    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-line-strong bg-panel px-4 text-sm font-medium text-soft transition duration-150 hover:-translate-y-px hover:border-muted hover:bg-raised hover:text-ink active:translate-y-0 disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-line-strong bg-panel px-4 text-sm font-medium text-soft transition duration-150 hover:-translate-y-px hover:border-muted hover:bg-raised hover:text-ink active:translate-y-0 disabled:pointer-events-none disabled:opacity-40;
   }
 
   .btn-ghost {
-    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-sm px-3 text-sm font-medium text-muted transition duration-150 hover:bg-ink/[0.045] hover:text-ink disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-muted transition duration-150 hover:bg-ink/[0.045] hover:text-ink disabled:pointer-events-none disabled:opacity-40;
   }
 
   .btn-icon {
-    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border border-line bg-transparent text-muted transition duration-150 hover:border-line-strong hover:bg-ink/[0.045] hover:text-ink;
+    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-line bg-transparent text-muted transition duration-150 hover:border-line-strong hover:bg-ink/[0.045] hover:text-ink;
   }
 
   .input {
@@ -123,7 +123,7 @@ textarea:focus-visible {
   }
 
   .technical {
-    @apply font-mono text-[10px] uppercase tracking-[0.14em] text-faint;
+    @apply font-sans text-sm font-semibold normal-case tracking-normal text-soft;
   }
 
   .blueprint {

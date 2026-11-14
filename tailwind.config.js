@@ -35,6 +35,10 @@ export default {
         ],
         mono: ['IBM Plex Mono', 'Cascadia Mono', 'Consolas', 'ui-monospace', 'monospace'],
       },
+      fontSize: {
+        xs: ['0.8125rem', '1rem'],
+        sm: ['0.9375rem', '1.25rem'],
+      },
       borderRadius: {
         none: '0',
         sm: '4px',
