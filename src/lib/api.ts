@@ -46,6 +46,31 @@ export class ApiError extends Error {
   }
 }
 
+function formatApiErrorDetail(detail: unknown, status: number): string {
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    const messages = detail.flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+
+      const error = item as { loc?: unknown; msg?: unknown };
+      if (typeof error.msg !== 'string' || !error.msg.trim()) return [];
+
+      const location = Array.isArray(error.loc)
+        ? error.loc.slice(1).filter((part) => typeof part === 'string' || typeof part === 'number').join('.')
+        : '';
+
+      return [location ? `${location}: ${error.msg}` : error.msg];
+    });
+
+    if (messages.length > 0) return messages.join('; ');
+  }
+
+  return `HTTP ${status}`;
+}
+
 // Все mock-ответы — JSON-снимки, как при настоящем HTTP-запросе.
 // Изменения живут в памяти до перезагрузки страницы и не меняют исходные fixtures.
 function copyJson<T>(value: T): T {
@@ -169,9 +194,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
     try {
       const payload = (await response.json()) as { detail?: unknown };
-      if (typeof payload.detail === 'string') {
-        detail = payload.detail;
-      }
+      detail = formatApiErrorDetail(payload.detail, response.status);
     } catch {
       // Тело ошибки может быть пустым или не JSON.
     }

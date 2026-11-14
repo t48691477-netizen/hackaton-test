@@ -3,13 +3,14 @@
 Дата проверки: 14.11.2026.
 
 Проверены: `Layout.tsx`, `Users.tsx`, `Scanner.tsx`, `RoleGuard`, `RoleContext`,
-`accessKeys.ts`, `access.ts`, `session.ts`, `email.ts` и зависимости.
+`accessKeys.ts`, `access.ts`, `session.ts`, `email.ts`, frontend-тесты и зависимости.
 
 ## Итог автоматических проверок
 
 | Проверка | Результат |
 |---|---|
 | `npm run build` | успешно |
+| `npm run test:run` | 112 тестов, 11 файлов — все прошли |
 | `npm audit` | 0 уязвимостей (0 critical / high / moderate / low) |
 | TypeScript strict | успешно |
 
