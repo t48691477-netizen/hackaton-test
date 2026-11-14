@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kst_background">#FFF4F5F8</color>
+    <color name="kst_surface">#FFFFFFFF</color>
+    <color name="kst_border">#FFE5E7EA</color>
+    <color name="kst_text_primary">#FF313132</color>
+    <color name="kst_text_secondary">#FF5A5E67</color>
+    <color name="kst_accent">#FF135AA6</color>
+    <color name="kst_accent_pressed">#FF0F4A89</color>
+    <color name="kst_navy">#FF0E3462</color>
+    <color name="kst_success">#FF2A6F3E</color>
+    <color name="kst_warning">#FF8A5A00</color>
+    <color name="kst_error">#FFB42318</color>
+</resources>

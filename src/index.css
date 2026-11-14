@@ -1,0 +1,173 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+
+  /* ПромСкан: серебристо-белый, графит и сигнальный оранжевый */
+  --bg: 246 245 242;
+  --bg-deep: 236 234 229;
+  --panel: 255 255 255;
+  --raised: 250 249 246;
+  --line: 226 223 216;
+  --line-strong: 196 191 181;
+  --ink: 27 26 24;
+  --soft: 61 58 53;
+  --muted: 96 91 83;
+  --faint: 116 110 100;
+  --accent: 194 65 12;
+  --accent-hi: 168 55 9;
+  --accent-ink: 255 249 245;
+  --ok: 42 111 62;
+  --warn: 138 90 0;
+  --danger: 180 35 24;
+  --info: 37 99 168;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: rgb(var(--bg));
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-canvas font-sans text-ink antialiased;
+  margin: 0;
+  min-width: 320px;
+  font-feature-settings: 'kern' 1, 'liga' 1;
+}
+
+::selection {
+  background: rgb(var(--accent));
+  color: rgb(var(--accent-ink));
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--line-strong)) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--line-strong));
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--faint));
+}
+
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 3px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline-offset: 1px;
+}
+
+@layer components {
+  .skip-link {
+    @apply fixed left-4 top-4 z-[100] -translate-y-24 bg-accent px-4 py-3 text-sm font-medium text-accent-ink transition-transform duration-150 focus:translate-y-0;
+  }
+
+  .btn-primary {
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-sm bg-accent px-4 text-sm font-medium text-accent-ink transition duration-150 hover:-translate-y-px hover:bg-accent-hi active:translate-y-0 disabled:pointer-events-none disabled:opacity-40;
+  }
+
+  .btn-secondary {
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-line-strong bg-panel px-4 text-sm font-medium text-soft transition duration-150 hover:-translate-y-px hover:border-muted hover:bg-raised hover:text-ink active:translate-y-0 disabled:pointer-events-none disabled:opacity-40;
+  }
+
+  .btn-ghost {
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-sm px-3 text-sm font-medium text-muted transition duration-150 hover:bg-ink/[0.045] hover:text-ink disabled:pointer-events-none disabled:opacity-40;
+  }
+
+  .btn-icon {
+    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border border-line bg-transparent text-muted transition duration-150 hover:border-line-strong hover:bg-ink/[0.045] hover:text-ink;
+  }
+
+  .input {
+    @apply h-11 w-full rounded-sm border border-line bg-panel px-3 text-sm text-ink outline-none transition-colors duration-150 placeholder:text-faint hover:border-line-strong focus:border-accent focus:ring-1 focus:ring-accent/25;
+  }
+
+  .label {
+    @apply mb-2 block font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-muted;
+  }
+
+  .eyebrow {
+    @apply font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-accent;
+  }
+
+  .tag {
+    @apply inline-flex h-7 items-center gap-2 border px-2 font-mono text-[10px] font-medium uppercase tracking-[0.12em];
+  }
+
+  .table-head {
+    @apply border-b border-line font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-faint;
+  }
+
+  .technical {
+    @apply font-mono text-[10px] uppercase tracking-[0.14em] text-faint;
+  }
+
+  .blueprint {
+    background-image:
+      linear-gradient(rgb(var(--line-strong) / 0.28) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--line-strong) / 0.28) 1px, transparent 1px);
+    background-size: 72px 72px;
+    background-position: center;
+  }
+
+  .scanline {
+    @apply pointer-events-none absolute inset-x-0 h-px animate-scan;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(var(--accent) / 0.7) 22%,
+      rgb(var(--accent) / 0.9) 50%,
+      rgb(var(--accent) / 0.7) 78%,
+      transparent
+    );
+    box-shadow: 0 0 14px rgb(var(--accent) / 0.3);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

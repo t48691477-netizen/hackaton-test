@@ -1,0 +1,36 @@
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+*.pem
+*.key
+
+# Model weights and runtime data must live in named volumes, not the image.
+weights/
+**/weights/
+data/
+**/data/
+*.pt
+static/uploads/
+
+# Python and frontend build/cache output.
+**/__pycache__/
+**/*.py[cod]
+.venv/
+venv/
+node_modules/
+dist/
+
+# Android build inputs and generated files are not needed by this API image.
+.gradle/
+.kotlin/
+app/src/
+app/build/
+gradle/
+gradlew
+*.gradle
+*.gradle.kts
+local.properties
+.idea/
+*.iml
