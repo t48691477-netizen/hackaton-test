@@ -166,16 +166,16 @@ function describeCameraError(error: unknown): string {
 
 function SpecGrid({ specs }: { specs: SpecItem[] }) {
   return (
-    <dl className="mt-2 grid grid-cols-1 gap-px border border-line bg-line min-[420px]:grid-cols-2">
+    <dl className="mt-2 grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line min-[420px]:grid-cols-2">
       {specs.map((spec) => (
         <div key={spec.label} className="min-w-0 bg-panel px-3 py-2.5">
-          <dt className="text-[9px] uppercase leading-4 tracking-[0.1em] text-faint">
+          <dt className="text-xs leading-4 text-faint">
             {spec.label}
           </dt>
-          <dd className="mt-0.5 break-words font-mono text-xs leading-5 text-ink">
+          <dd className="mt-0.5 break-words text-xs leading-5 text-ink">
             {spec.value}
             {spec.unit ? (
-              <span className="ml-1 text-[10px] text-muted">{spec.unit}</span>
+              <span className="ml-1 text-xs text-muted">{spec.unit}</span>
             ) : null}
           </dd>
         </div>
@@ -266,7 +266,7 @@ function DefectOverlay({
             )} процентов`}
           >
             <span
-              className={`absolute -top-6 left-0 whitespace-nowrap border bg-canvas/95 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] ${meta.border} ${meta.text}`}
+              className={`absolute -top-6 left-0 whitespace-nowrap border bg-canvas/95 px-1.5 py-0.5 text-xs ${meta.border} ${meta.text}`}
             >
               {defect.label} · {Math.round(defect.confidence * 100)}%
             </span>
@@ -288,13 +288,13 @@ function CameraGuide() {
       <div className="absolute inset-0 grid place-items-center">
         <div className="flex items-center gap-3 border border-line bg-canvas/80 px-3 py-2">
           <Crosshair className="h-4 w-4 text-accent" aria-hidden="true" />
-          <p className="font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-soft">
+          <p className="text-xs font-medium text-soft">
             Наведите на оборудование
           </p>
         </div>
       </div>
 
-      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 text-xs text-faint">
         <span className="h-1.5 w-1.5 bg-accent" aria-hidden="true" />
         PSC-02 / демо
       </div>
@@ -330,7 +330,7 @@ function CameraError({
           Загрузить фото
         </button>
       </div>
-      <p className="mt-4 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+      <p className="mt-4 text-xs text-faint">
         Камера работает только на HTTPS или localhost
       </p>
     </div>
@@ -358,10 +358,10 @@ function HowItWorksContent({ status }: { status: ScannerStatus }) {
       <div className="grid gap-8 pb-8 sm:grid-cols-3 sm:gap-10">
         {steps.map((step, index) => (
           <div key={step.title} className="border-t border-line pt-5">
-            <p className="font-mono text-[10px] tracking-[0.16em] text-accent">
-              0{index + 1}
+            <p className="text-xs text-accent">
+              {index + 1}
             </p>
-            <h3 className="mt-3 text-lg font-medium tracking-[-0.02em] text-ink">
+            <h3 className="mt-3 text-lg font-medium text-ink">
               {step.title}
             </h3>
             <p className="mt-2 text-sm leading-6 text-muted">{step.text}</p>
@@ -378,7 +378,7 @@ function HowItWorksContent({ status }: { status: ScannerStatus }) {
             интеграции их заменит POST /api/inspect.
           </p>
         </div>
-        <div className="flex items-center gap-3 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+        <div className="flex items-center gap-3 text-xs text-faint">
           Статус камеры
           <span className="text-soft">{STATUS_META[status].label}</span>
         </div>
@@ -485,7 +485,7 @@ function ReportCreateForm({
           Передача задачи
         </h3>
         {API_CONFIG.useMock ? (
-          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+          <span className="text-xs text-faint">
             mock
           </span>
         ) : null}
@@ -506,7 +506,7 @@ function ReportCreateForm({
 
       {saved && savedReport ? (
         <div className="mt-3 space-y-3">
-          <div className="border border-line bg-panel p-3">
+          <div className="rounded-xl border border-line bg-panel p-3">
             <p className="technical">Исполнитель</p>
             <p className="mt-1 text-sm font-medium text-ink">{assigneeName}</p>
           </div>
@@ -540,7 +540,7 @@ function ReportCreateForm({
             ) : null}
           </div>
 
-          <p className="break-all font-mono text-[10px] leading-4 text-faint">
+          <p className="break-all text-xs leading-4 text-faint">
             {taskUrl}
           </p>
 
@@ -572,7 +572,7 @@ function ReportCreateForm({
                 onChange={(event) => setAssigneeId(event.target.value)}
                 required
                 disabled={!engineers.length}
-                className="mt-1.5 min-h-10 w-full border border-line bg-panel px-3 py-2 text-xs text-ink"
+                className="mt-1.5 min-h-10 w-full rounded-lg border border-line bg-panel px-3 py-2 text-xs text-ink"
                 autoFocus
               >
                 {engineers.map((employee) => (
@@ -582,7 +582,7 @@ function ReportCreateForm({
                 ))}
               </select>
               {!engineers.length ? (
-                <p className="mt-1.5 text-[10px] leading-4 text-danger">
+                <p className="mt-1.5 text-xs leading-4 text-danger">
                   Нет доступных исполнителей — передача задачи недоступна.
                 </p>
               ) : null}
@@ -598,7 +598,7 @@ function ReportCreateForm({
                 value={comment}
                 onChange={(event) => setComment(event.target.value)}
                 rows={4}
-                className="mt-1.5 w-full resize-y border border-line bg-panel px-3 py-2 text-xs leading-5 text-ink"
+                className="mt-1.5 w-full resize-y rounded-lg border border-line bg-panel px-3 py-2 text-xs leading-5 text-ink"
               />
             </div>
 
@@ -615,9 +615,9 @@ function ReportCreateForm({
                   setPhoto(event.target.files?.[0] ?? snapshotPhoto)
                 }
                 aria-describedby="report-photo-hint"
-                className="mt-1.5 block w-full min-w-0 text-xs text-muted file:mr-2 file:border file:border-line file:bg-panel file:px-2 file:py-2 file:text-xs file:text-ink"
+                className="mt-1.5 block w-full min-w-0 text-xs text-muted file:mr-2 file:rounded-md file:border file:border-line file:bg-panel file:px-2 file:py-2 file:text-xs file:text-ink"
               />
-              <p id="report-photo-hint" className="mt-1.5 text-[10px] leading-4 text-faint">
+              <p id="report-photo-hint" className="mt-1.5 text-xs leading-4 text-faint">
                 {API_CONFIG.useMock
                   ? 'Демо: фото не отправляется; backend не подключён.'
                   : photo
@@ -671,9 +671,9 @@ function DetailedAnalysisView({ result }: { result: DetailedAnalysisResult }) {
     <div className="mt-4 border border-line bg-raised p-4" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-ink">Подробный анализ</h3>
-        <span className="font-mono text-[10px] text-muted">{result.processing_ms} мс</span>
+        <span className="text-xs text-muted">{result.processing_ms} мс</span>
       </div>
-      <p className="mt-1 break-all font-mono text-[10px] leading-4 text-faint">
+      <p className="mt-1 break-all text-xs leading-4 text-faint">
         Осмотр {result.inspection_id}
       </p>
       <p className="mt-2 text-sm leading-6 text-soft">{result.summary}</p>
@@ -711,7 +711,7 @@ function DetailedAnalysisView({ result }: { result: DetailedAnalysisResult }) {
           </ol>
         </div>
       ) : null}
-      <p className="mt-4 break-words font-mono text-[10px] leading-4 text-faint">
+      <p className="mt-4 break-words text-xs leading-4 text-faint">
         Модели: {result.models.join(', ') || 'не указаны'}
       </p>
     </div>
@@ -885,10 +885,10 @@ function LiveReport({
     : { inspectionId: analysis.inspection_id, status: 'idle' as const };
 
   return (
-    <div className="animate-fade-in border border-line bg-panel">
+    <div className="animate-fade-in rounded-xl border border-line bg-panel">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line px-4 py-3 sm:px-5">
         <span className="eyebrow">Отчёт · live</span>
-        <span className="inline-flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+        <span className="inline-flex items-center gap-2 text-xs text-faint">
           <span
             className="h-1.5 w-1.5 animate-pulse-soft bg-ok"
             aria-hidden="true"
@@ -898,10 +898,10 @@ function LiveReport({
       </div>
 
       <div className="p-4 sm:p-5">
-        <h2 className="text-lg font-medium leading-tight tracking-[-0.025em] text-ink sm:text-xl">
+        <h2 className="text-lg font-medium leading-tight text-ink sm:text-xl">
           {displayedEquipment.name}
         </h2>
-        <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+        <p className="mt-2 text-xs text-faint">
           Инв. № {displayedEquipment.inventory_number} · ресурс{' '}
           {displayedEquipment.service_life_years} лет · ТО{' '}
           {formatDate(displayedEquipment.last_maintenance_at)}
@@ -919,19 +919,19 @@ function LiveReport({
           <dl className="mt-2 divide-y divide-line">
             <div className="flex items-center justify-between gap-3 py-2">
               <dt className="text-xs text-soft">Утечка масла</dt>
-              <dd className="font-mono text-xs tabular text-ink">
+              <dd className="text-xs tabular text-ink">
                 {formatConditionProbability(analysis.condition_parameters?.oil_leak_probability)}
               </dd>
             </div>
             <div className="flex items-center justify-between gap-3 py-2">
               <dt className="text-xs text-soft">Ржавчина</dt>
-              <dd className="font-mono text-xs tabular text-ink">
+              <dd className="text-xs tabular text-ink">
                 {formatConditionProbability(analysis.condition_parameters?.rust_probability)}
               </dd>
             </div>
             <div className="flex items-center justify-between gap-3 py-2">
               <dt className="text-xs text-soft">Плохой сварной шов</dt>
-              <dd className="font-mono text-xs tabular text-ink">
+              <dd className="text-xs tabular text-ink">
                 {formatConditionProbability(analysis.condition_parameters?.poor_weld_probability)}
               </dd>
             </div>
@@ -977,12 +977,12 @@ function LiveReport({
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line pb-2">
             <p
               id="specs-heading"
-              className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-ink"
+              className="inline-flex items-center gap-2 text-xs text-ink"
             >
               <Gauge className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
               Технические характеристики
             </p>
-            <span className="inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+            <span className="inline-flex items-center gap-1.5 text-xs text-faint">
               <MousePointer2 className="h-3 w-3" aria-hidden="true" />
               {mockSpecs ? 'демо · mock' : 'по наведению'}
             </span>
@@ -991,7 +991,7 @@ function LiveReport({
           {mockSpecs ? (
             <p
               id="equipment-specs-source"
-              className="mt-2 hidden text-[10px] leading-4 text-faint sm:block"
+              className="mt-2 hidden text-xs leading-4 text-faint sm:block"
             >
               Демо-характеристики узла. После подключения backend здесь будут его
               характеристики, не замеры дефекта.
@@ -1002,13 +1002,13 @@ function LiveReport({
             <div className="mt-3">
               <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                 <div className="min-w-0">
-                  <p className="text-[10px] uppercase tracking-[0.12em] text-faint">
+                  <p className="text-xs text-faint">
                     Активная зона
                   </p>
                   <p className="mt-1 text-sm font-medium leading-5 text-ink">
                     {activeDefect.label}
                   </p>
-                  <p className="mt-1 font-mono text-[10px] text-faint">
+                  <p className="mt-1 text-xs text-faint">
                     {activeDefect.source_model === 'crack'
                       ? 'детекция трещин'
                       : 'сегментация коррозии'}{' '}
@@ -1051,19 +1051,19 @@ function LiveReport({
                   <p className="technical">Паспорт оборудования</p>
                   <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
                     <div>
-                      <dt className="text-[10px] text-muted">Модель</dt>
+                      <dt className="text-xs text-muted">Модель</dt>
                       <dd className="mt-0.5 text-xs font-medium text-ink">{equipmentDetail.model}</dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] text-muted">Производитель</dt>
+                      <dt className="text-xs text-muted">Производитель</dt>
                       <dd className="mt-0.5 text-xs font-medium text-ink">{equipmentDetail.manufacturer}</dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] text-muted">Категория</dt>
+                      <dt className="text-xs text-muted">Категория</dt>
                       <dd className="mt-0.5 text-xs text-soft">{equipmentDetail.category}</dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] text-muted">Место установки</dt>
+                      <dt className="text-xs text-muted">Место установки</dt>
                       <dd className="mt-0.5 text-xs text-soft">{equipmentDetail.location}</dd>
                     </div>
                   </dl>
@@ -1090,19 +1090,19 @@ function LiveReport({
               <dl className="mt-3 divide-y divide-line border-y border-line">
                 <div className="flex items-center justify-between gap-3 py-2">
                   <dt className="technical">Последнее ТО</dt>
-                  <dd className="font-mono text-[10px] text-soft">
+                  <dd className="text-xs text-soft">
                     {formatDate(displayedEquipment.last_maintenance_at)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3 py-2">
                   <dt className="technical">Следующее ТО</dt>
-                  <dd className="font-mono text-[10px] text-soft">
+                  <dd className="text-xs text-soft">
                     {formatDate(displayedEquipment.next_maintenance_at)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3 py-2">
                   <dt className="technical">Ресурс</dt>
-                  <dd className="font-mono text-[10px] text-soft">
+                  <dd className="text-xs text-soft">
                     {displayedEquipment.service_life_years} лет
                   </dd>
                 </div>
@@ -1119,8 +1119,8 @@ function LiveReport({
         <div className="mt-6">
           <div className="flex items-center justify-between border-b border-line pb-2">
             <p className="technical">Зоны риска</p>
-            <span className="font-mono text-[10px] text-faint">
-              0{analysis.defects.length}
+            <span className="text-xs text-faint">
+              {analysis.defects.length}
             </span>
           </div>
 
@@ -1153,7 +1153,7 @@ function LiveReport({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span
-                      className={`inline-flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.1em] ${meta.text}`}
+                      className={`inline-flex items-center gap-2 text-xs ${meta.text}`}
                     >
                       <span
                         className={`h-1.5 w-1.5 shrink-0 ${meta.dot}`}
@@ -1161,7 +1161,7 @@ function LiveReport({
                       />
                       {meta.label}
                     </span>
-                    <span className="font-mono text-[10px] text-faint tabular">
+                    <span className="text-xs text-faint tabular">
                       {Math.round(defect.confidence * 100)}%
                     </span>
                   </div>
@@ -1182,7 +1182,7 @@ function LiveReport({
                   <div
                     aria-hidden={!active}
                     data-defect-recommendation
-                    className={`mt-2 flex h-10 gap-2 overflow-hidden text-[11px] leading-5 text-muted ${
+                    className={`mt-2 flex h-10 gap-2 overflow-hidden text-xs leading-5 text-muted ${
                       active ? '' : 'invisible'
                     }`}
                   >
@@ -1203,14 +1203,14 @@ function LiveReport({
             <p id="llm-heading" className="technical">
               Рекомендация по восстановлению
             </p>
-            <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+            <span className="text-xs text-faint">
               llm: {analysis.meta.llm_mode}
             </span>
           </div>
           <p className="mt-2 text-xs leading-5 text-soft">
             {analysis.llm.probable_cause}
           </p>
-          <p className="mt-1.5 hidden text-[10px] leading-4 text-faint sm:block">
+          <p className="mt-1.5 hidden text-xs leading-4 text-faint sm:block">
             Рекомендация относится к повреждённому узлу и передаётся сотруднику
             вместе с задачей.
           </p>
@@ -1218,10 +1218,10 @@ function LiveReport({
             {analysis.llm.recommendation_steps.map((step, index) => (
               <li
                 key={step}
-                className="flex gap-2.5 text-[11px] leading-5 text-muted sm:text-xs sm:leading-6"
+                className="flex gap-2.5 text-xs leading-5 text-muted sm:text-xs sm:leading-6"
               >
-                <span className="font-mono text-[9px] text-accent">
-                  {String(index + 1).padStart(2, '0')}
+                <span className="text-xs text-accent">
+                  {index + 1}
                 </span>
                 {step}
               </li>
@@ -1229,12 +1229,12 @@ function LiveReport({
           </ol>
         </section>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-faint">
           <span>обработка {analysis.meta.processing_ms} мс</span>
           <span>обновление ~{DETECTION_INTERVAL_MS / 1000} с</span>
         </div>
 
-        <p className="mt-3 text-[10px] leading-4 text-faint">
+        <p className="mt-3 text-xs leading-4 text-faint">
           {API_CONFIG.useMock
             ? 'Демо-режим: распознавание симулируется на устройстве.'
             : 'Результат backend. Не основание для ремонта без проверки инженером.'}
@@ -1272,22 +1272,22 @@ function LiveReport({
 
 function EmptyReport({ status }: { status: ScannerStatus }) {
   return (
-    <div className="border border-line bg-panel" data-placeholder="equipment-specs">
+    <div className="rounded-xl border border-line bg-panel" data-placeholder="equipment-specs">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line px-4 py-3 sm:px-5">
         <span className="eyebrow">Отчёт · live</span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+        <span className="text-xs text-faint">
           ожидание
         </span>
       </div>
 
       <div className="p-4 sm:p-5">
         <p
-          className="font-mono text-[4rem] font-medium leading-none tracking-[-0.06em] text-line-strong"
+          className="text-[4rem] font-medium leading-none text-line-strong"
           aria-hidden="true"
         >
           00
         </p>
-        <h2 className="mt-4 text-xl font-medium tracking-[-0.025em] text-ink">
+        <h2 className="mt-4 text-xl font-medium text-ink">
           Здесь появятся характеристики
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted">
@@ -1298,7 +1298,7 @@ function EmptyReport({ status }: { status: ScannerStatus }) {
         <dl className="mt-6 divide-y divide-line border-y border-line">
           <div className="flex items-center justify-between gap-3 py-3">
             <dt className="technical">Статус камеры</dt>
-            <dd className="font-mono text-[10px] uppercase tracking-[0.08em] text-soft">
+            <dd className="text-xs text-soft">
               {status === 'ready'
                 ? 'Распознавание снимка'
                 : STATUS_META[status].label}
@@ -1306,13 +1306,13 @@ function EmptyReport({ status }: { status: ScannerStatus }) {
           </div>
           <div className="flex items-center justify-between gap-3 py-3">
             <dt className="technical">Режим</dt>
-            <dd className="font-mono text-[10px] uppercase tracking-[0.08em] text-soft">
+            <dd className="text-xs text-soft">
               live · {API_CONFIG.useMock ? 'mock' : 'real'}
             </dd>
           </div>
           <div className="flex items-center justify-between gap-3 py-3">
             <dt className="technical">Обработка</dt>
-            <dd className="font-mono text-[10px] uppercase tracking-[0.08em] text-soft">
+            <dd className="text-xs text-soft">
               на устройстве
             </dd>
           </div>
@@ -1818,7 +1818,6 @@ export function Scanner() {
   return (
     <div className="space-y-7">
       <PageHeader
-        index="01"
         label="Компьютерное зрение"
         title="Веб-сканер"
         description="Наведите камеру на оборудование — дефекты и технические характеристики появляются автоматически. Наведите курсор на дефект, чтобы открыть характеристики узла."
@@ -1837,7 +1836,7 @@ export function Scanner() {
               />
               {statusLabel}
             </span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-faint">
+            <span className="text-xs text-faint">
               CAM 01 · LIVE
             </span>
           </div>
@@ -1846,8 +1845,8 @@ export function Scanner() {
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(340px,0.9fr)] lg:gap-8 xl:grid-cols-[minmax(0,1.7fr)_minmax(400px,0.9fr)] 2xl:grid-cols-[minmax(0,1.8fr)_minmax(440px,0.8fr)] 2xl:gap-10">
         <section aria-label="Окно камеры" className="min-w-0">
-          <div className="flex items-center justify-between gap-3 border border-line border-b-0 bg-panel px-4 py-2.5">
-            <div className="flex min-w-0 items-center gap-3 font-mono text-[9px] uppercase tracking-[0.14em]">
+          <div className="flex items-center justify-between gap-3 rounded-t-xl border border-line border-b-0 bg-panel px-4 py-2.5">
+            <div className="flex min-w-0 items-center gap-3 text-xs">
               <span className="inline-flex items-center gap-1.5 text-accent">
                 <Camera className="h-3.5 w-3.5" aria-hidden="true" />
                 CAM 01
@@ -1869,7 +1868,7 @@ export function Scanner() {
                     type="button"
                     onClick={handleToggleCamera}
                     disabled={status === 'starting'}
-                    className="inline-flex min-h-11 items-center gap-1.5 px-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex min-h-11 items-center gap-1.5 px-2 text-xs text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label={
                       frontCamera
                         ? 'Включить основную камеру'
@@ -1883,7 +1882,7 @@ export function Scanner() {
                     ref={fullscreenTriggerRef}
                     type="button"
                     onClick={() => setFullscreen(true)}
-                    className="inline-flex min-h-11 items-center gap-1.5 px-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted transition-colors hover:text-ink"
+                    className="inline-flex min-h-11 items-center gap-1.5 px-2 text-xs text-muted transition-colors hover:text-ink"
                     aria-label="Развернуть камеру на весь экран"
                   >
                     <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1895,7 +1894,7 @@ export function Scanner() {
               <button
                 type="button"
                 onClick={handleReset}
-                className="inline-flex min-h-11 shrink-0 items-center gap-1.5 px-2 font-mono text-[10px] uppercase tracking-[0.08em] text-muted transition-colors hover:text-ink"
+                className="inline-flex min-h-11 shrink-0 items-center gap-1.5 px-2 text-xs text-muted transition-colors hover:text-ink"
               >
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
                 Сбросить
@@ -1948,7 +1947,7 @@ export function Scanner() {
                   <p className="mt-3 text-sm font-medium text-ink">
                     Подключаем камеру...
                   </p>
-                  <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+                  <p className="mt-1 text-xs text-faint">
                     Разрешите доступ в браузере
                   </p>
                 </div>
@@ -1973,7 +1972,7 @@ export function Scanner() {
             ) : null}
           </div>
 
-          <div className="flex flex-col gap-4 border border-line border-t-0 bg-panel p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 rounded-b-xl border border-line border-t-0 bg-panel p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2.5 text-xs leading-5 text-muted">
               <span
                 className={`h-1.5 w-1.5 shrink-0 ${
@@ -2074,11 +2073,11 @@ export function Scanner() {
           className="group flex w-full items-center justify-between gap-4 py-5 text-left"
         >
           <span className="flex items-start gap-4">
-            <span className="mt-1 font-mono text-[10px] tracking-[0.16em] text-accent">
+            <span className="mt-1 text-xs text-accent">
               04
             </span>
             <span>
-              <span className="block text-lg font-medium tracking-[-0.02em] text-ink">
+              <span className="block text-lg font-medium text-ink">
                 Как это работает
               </span>
               <span className="mt-1 block text-xs leading-5 text-faint">
@@ -2088,7 +2087,7 @@ export function Scanner() {
           </span>
 
           <span className="flex shrink-0 items-center gap-3 text-faint">
-            <span className="hidden font-mono text-[9px] uppercase tracking-[0.14em] sm:inline">
+            <span className="hidden text-xs sm:inline">
               {howItWorksOpen ? 'Свернуть' : 'Открыть'}
             </span>
             <ChevronDown

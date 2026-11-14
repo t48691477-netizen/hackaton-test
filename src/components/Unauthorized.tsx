@@ -20,25 +20,15 @@ import { Brand } from './Brand';
 function ScanTarget() {
   return (
     <div
-      className="pointer-events-none absolute -bottom-24 -right-28 h-[440px] w-[440px] opacity-60"
+      className="pointer-events-none absolute -bottom-24 -right-28 h-[440px] w-[440px]"
       aria-hidden="true"
     >
-      <div className="absolute inset-0 border border-line" />
-      <div className="absolute inset-[12%] border border-line" />
-      <div className="absolute inset-[28%] border border-line-strong" />
-      <div className="absolute inset-[44%] border border-accent/50" />
-      <div className="absolute left-1/2 top-0 h-full w-px bg-line/70" />
-      <div className="absolute left-0 top-1/2 h-px w-full bg-line/70" />
-      <div className="absolute left-[44%] top-[44%] h-[12%] w-[12%] bg-accent/15" />
-      <span className="absolute left-[44%] top-[28%] -translate-y-4 font-mono text-[9px] uppercase tracking-[0.18em] text-faint">
-        X 042.8
-      </span>
-      <span className="absolute left-[44%] top-[58%] mt-2 font-mono text-[9px] uppercase tracking-[0.18em] text-faint">
-        Y 118.2
-      </span>
-      <span className="absolute left-[28%] top-[44%] -translate-x-full pr-3 font-mono text-[9px] uppercase tracking-[0.18em] text-faint">
-        PSC-02
-      </span>
+      <div className="absolute inset-0 rounded-full border border-white/10" />
+      <div className="absolute inset-[12%] rounded-full border border-white/10" />
+      <div className="absolute inset-[28%] rounded-full border border-white/15" />
+      <div className="absolute inset-[44%] rounded-full border border-white/30" />
+      <div className="absolute left-1/2 top-0 h-full w-px bg-white/10" />
+      <div className="absolute left-0 top-1/2 h-px w-full bg-white/10" />
     </div>
   );
 }
@@ -96,55 +86,48 @@ export function Unauthorized() {
   };
 
   return (
-    <div className="grid min-h-dvh bg-canvas lg:grid-cols-[1.08fr_0.92fr]">
-      <aside className="relative hidden flex-col justify-between overflow-hidden border-r border-line bg-[linear-gradient(150deg,#f8f7f4_0%,#ebe8e1_55%,#ddd9d0_100%)] p-10 lg:flex xl:p-14">
-        <div className="blueprint absolute inset-0" aria-hidden="true" />
-        <div
-          className="absolute inset-0 bg-[radial-gradient(circle_at_28%_22%,rgb(255_255_255/0.92)_0%,transparent_58%)]"
-          aria-hidden="true"
-        />
+    <div className="grid min-h-dvh gap-5 bg-canvas p-4 lg:grid-cols-[1.08fr_0.92fr] lg:p-5">
+      <aside className="relative hidden flex-col justify-end overflow-hidden rounded-xl bg-hero p-10 text-white lg:flex xl:p-14">
         <ScanTarget />
 
-        <div className="relative z-10">
-          <Brand to="/" />
-        </div>
-
         <div className="relative z-10 max-w-xl py-10">
-          <p className="eyebrow">Промышленное зрение / 2026</p>
-          <p className="mt-6 text-balance text-[clamp(3rem,4.8vw,5.25rem)] font-medium leading-[0.9] tracking-[-0.055em] text-ink">
+          <p className="text-sm font-medium text-white/70">
+            Промышленное зрение
+          </p>
+          <p className="mt-5 text-balance text-[clamp(2.25rem,3.6vw,3.75rem)] font-semibold leading-[1.05] tracking-[-0.02em]">
             Контроль, который видит узел.
           </p>
-          <p className="mt-8 max-w-md text-[15px] leading-7 text-muted">
+          <p className="mt-6 max-w-md text-[15px] leading-7 text-white/75">
             Камера, отчёт ИИ и доступ к оборудованию — в одной панели. Снимок
             остаётся в браузере, результат появляется через две секунды.
           </p>
         </div>
 
-        <div className="relative z-10 grid grid-cols-3 gap-6 border-t border-line pt-5">
+        <div className="relative z-10 grid grid-cols-3 gap-6 border-t border-white/15 pt-5">
           <div>
-            <p className="technical">Модуль</p>
-            <p className="mt-1.5 font-mono text-xs text-soft">PSC-02</p>
+            <p className="text-xs text-white/60">Модуль</p>
+            <p className="mt-1 font-mono text-sm text-white">PSC-02</p>
           </div>
           <div>
-            <p className="technical">Режим</p>
-            <p className="mt-1.5 font-mono text-xs text-soft">Демо</p>
+            <p className="text-xs text-white/60">Режим</p>
+            <p className="mt-1 text-sm text-white">Демо</p>
           </div>
           <div>
-            <p className="technical">Доступ</p>
-            <p className="mt-1.5 font-mono text-xs text-soft">По роли</p>
+            <p className="text-xs text-white/60">Доступ</p>
+            <p className="mt-1 text-sm text-white">По роли</p>
           </div>
         </div>
       </aside>
 
-      <main className="flex min-h-dvh flex-col bg-panel px-5 py-7 sm:px-10 lg:px-12 xl:px-20">
-        <div className="lg:hidden">
+      <main className="flex min-h-[calc(100dvh-2rem)] flex-col px-2 py-3 sm:px-8 lg:min-h-[calc(100dvh-2.5rem)] lg:px-10 xl:px-16">
+        <div>
           <Brand to="/" />
         </div>
 
         <div className="flex flex-1 items-center py-12">
           <div className="mx-auto w-full max-w-[420px] animate-page-in">
             <p className="eyebrow">Служебный доступ</p>
-            <h1 className="mt-4 text-balance text-[clamp(2.35rem,3.5vw,3.4rem)] font-medium leading-[0.98] tracking-[-0.045em] text-ink">
+            <h1 className="mt-3 text-balance text-3xl font-semibold leading-tight tracking-[-0.01em] text-ink">
               Вход в веб-панель
             </h1>
             <p className="mt-4 text-sm leading-6 text-muted">
@@ -177,7 +160,7 @@ export function Unauthorized() {
                         setError('');
                       }
                     }}
-                    className="input pl-10 pr-12 font-mono uppercase tracking-[0.12em]"
+                    className="input pl-10 pr-12 font-mono uppercase tracking-[0.08em]"
                     placeholder="10 символов"
                     autoComplete="one-time-code"
                     inputMode="text"
@@ -216,9 +199,11 @@ export function Unauthorized() {
                 ) : (
                   <p
                     id="login-hint"
-                    className="mt-3 font-mono text-[10px] leading-5 tracking-[0.04em] text-faint"
+                    className="mt-3 text-xs leading-5 text-muted"
                   >
-                    Демо-ключ директора: PSCDRT2345. Ключи сотрудников
+                    Демо-ключ директора:{' '}
+                    <code className="font-mono text-ink">PSCDRT2345</code>.
+                    Ключи сотрудников
                     приходят на email после создания.
                   </p>
                 )}
@@ -239,7 +224,7 @@ export function Unauthorized() {
               </button>
             </form>
 
-            <div className="mt-7 flex gap-3 border border-line bg-raised p-4">
+            <div className="mt-7 flex gap-3 rounded-xl border border-line bg-panel p-4">
               <ShieldCheck
                 className="mt-0.5 h-4 w-4 shrink-0 text-ok"
                 aria-hidden="true"
@@ -251,7 +236,7 @@ export function Unauthorized() {
               </p>
             </div>
 
-            <p className="mt-6 text-[11px] leading-5 text-faint">
+            <p className="mt-6 text-xs leading-5 text-muted">
               Демо-режим: ключ проверяется в браузере по PBKDF2-хешу. В
               production проверка и сессия выполняются на сервере; ключ
               отправляется только по HTTPS.
@@ -259,9 +244,9 @@ export function Unauthorized() {
           </div>
         </div>
 
-        <footer className="flex items-center justify-between gap-4 border-t border-line pt-4 font-mono text-[9px] uppercase tracking-[0.16em] text-faint">
-          <span>PSC-02 · демо</span>
-          <span>Доступ по роли</span>
+        <footer className="flex items-center justify-between gap-4 border-t border-line pt-4 text-xs text-muted">
+          <span>ПромСкан · КСТ Энерго</span>
+          <span>Демо-стенд</span>
         </footer>
       </main>
     </div>

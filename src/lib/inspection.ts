@@ -68,7 +68,7 @@ export interface Defect {
   bbox: BoundingBox;
   polygon: Polygon | null;
   node_id: string | null;
-  source_model: 'corrosion' | 'crack';
+  source_model: 'corrosion' | 'crack' | 'oil';
   recommendation: string;
 }
 

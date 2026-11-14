@@ -15,7 +15,6 @@ import { useRole } from '../context/RoleContext';
 import { useFocusTrap } from '../lib/useFocusTrap';
 import {
   ROLE_LABELS,
-  ROLE_SHORT_LABELS,
   type Role,
 } from '../lib/roles';
 import { Brand } from './Brand';
@@ -58,14 +57,6 @@ const ROLE_INITIALS: Record<Role, string> = {
   dispatcher: 'ДС',
   engineer: 'РБ',
 };
-
-const TODAY = new Intl.DateTimeFormat('ru-RU', {
-  day: '2-digit',
-  month: 'short',
-})
-  .format(new Date())
-  .replace('.', '')
-  .toUpperCase();
 
 interface MobileNavProps {
   role: Role;
@@ -112,7 +103,7 @@ function MobileNav({
           <button
             type="button"
             onClick={onClose}
-            className="btn-icon border-0"
+            className="btn-icon"
             aria-label="Закрыть меню"
           >
             <X className="h-5 w-5" aria-hidden="true" />
@@ -123,7 +114,7 @@ function MobileNav({
           <p className="technical">Рабочее пространство</p>
 
           <nav aria-label="Мобильная навигация" className="mt-4">
-            {visibleItems.map((item, index) => {
+            {visibleItems.map((item) => {
               const Icon = item.icon;
 
               return (
@@ -142,19 +133,16 @@ function MobileNav({
                     <>
                       <span
                         className={[
-                          'grid h-10 w-10 shrink-0 place-items-center border transition-colors',
+                          'grid h-10 w-10 shrink-0 place-items-center rounded-lg transition-colors',
                           isActive
-                            ? 'border-accent/40 bg-accent/10 text-accent'
-                            : 'border-line text-faint group-hover:text-soft',
+                            ? 'bg-accent/10 text-accent'
+                            : 'bg-deep text-faint group-hover:text-soft',
                         ].join(' ')}
                       >
                         <Icon className="h-4 w-4" aria-hidden="true" />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block font-mono text-[9px] tracking-[0.18em] text-faint">
-                          0{index + 1}
-                        </span>
-                        <span className="mt-1 block text-[15px] font-medium leading-tight">
+                        <span className="block text-[15px] font-medium leading-tight">
                           {item.label}
                         </span>
                         <span className="mt-1 block text-xs leading-relaxed text-faint">
@@ -179,7 +167,7 @@ function MobileNav({
         </div>
 
         <div className="shrink-0 border-t border-line p-5">
-          <div className="flex items-start gap-3 border border-line bg-raised p-3">
+          <div className="flex items-start gap-3 rounded-xl bg-raised p-4">
             <ShieldCheck
               className="mt-0.5 h-4 w-4 shrink-0 text-ok"
               aria-hidden="true"
@@ -265,109 +253,60 @@ export function Layout() {
         Перейти к содержимому
       </a>
 
-      <div className="border-b border-line bg-deep">
-        <div className="mx-auto flex h-8 w-full max-w-[1560px] items-center justify-between gap-4 px-4 font-mono text-[9px] uppercase tracking-[0.16em] text-faint sm:px-6 lg:px-10">
-          <div className="flex items-center gap-2.5">
-            <span
-              className="h-1.5 w-1.5 animate-pulse-soft bg-ok"
-              aria-hidden="true"
-            />
-            <span className="text-soft">Система в норме</span>
-            <span className="hidden text-line-strong sm:inline" aria-hidden="true">
-              /
-            </span>
-            <span className="hidden sm:inline">демо-стенд</span>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {session ? (
-              <span className="hidden max-w-[220px] truncate md:inline">
-                {session.fullName}
-              </span>
-            ) : null}
-            <span className="hidden sm:inline">МСК · {TODAY}</span>
-            <span>PSC-02 · v0.1</span>
-          </div>
-        </div>
-      </div>
-
-      <header className="sticky top-0 z-40 border-b border-line bg-canvas">
+      <header className="sticky top-0 z-40 border-b border-line bg-panel">
         <div className="mx-auto flex h-[72px] w-full max-w-[1560px] items-center gap-6 px-4 sm:px-6 lg:px-10">
           <Brand />
 
           <nav
             aria-label="Основная навигация"
-            className="hidden h-full items-stretch border-l border-line lg:flex"
+            className="ml-2 hidden items-center gap-1 lg:flex"
           >
-            {visibleItems.map((item, index) => (
+            {visibleItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
                   [
-                    'group relative flex min-w-[136px] flex-col justify-center gap-1.5 border-r border-line px-5 transition-colors duration-150',
+                    'inline-flex h-10 items-center rounded-lg px-4 text-sm font-medium transition-colors duration-150',
                     isActive
-                      ? 'bg-ink/[0.035] text-ink'
-                      : 'text-muted hover:bg-ink/[0.025] hover:text-ink',
+                      ? 'bg-deep text-ink'
+                      : 'text-muted hover:bg-deep hover:text-ink',
                   ].join(' ')
                 }
               >
-                {({ isActive }) => (
-                  <>
-                    <span
-                      className={[
-                        'font-mono text-[9px] tracking-[0.18em]',
-                        isActive ? 'text-accent' : 'text-faint',
-                      ].join(' ')}
-                    >
-                      0{index + 1}
-                    </span>
-                    <span className="text-[13px] font-medium leading-none">
-                      {item.label}
-                    </span>
-                    <span
-                      className={[
-                        'absolute inset-x-0 bottom-0 h-px origin-left bg-accent transition-transform duration-200',
-                        isActive
-                          ? 'scale-x-100'
-                          : 'scale-x-0 group-hover:scale-x-100',
-                      ].join(' ')}
-                      aria-hidden="true"
-                    />
-                  </>
-                )}
+                {item.label}
               </NavLink>
             ))}
           </nav>
 
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            <span
-              className="tag hidden border-line bg-transparent text-soft sm:inline-flex"
+            <div
+              className="hidden min-w-0 text-right leading-tight xl:block"
               title={`Текущая роль: ${ROLE_LABELS[role]}${
                 session ? ` · ${session.fullName}` : ''
               }`}
             >
-              <span className="h-1.5 w-1.5 bg-accent" aria-hidden="true" />
-              <span className="hidden 2xl:inline">
+              <p className="max-w-[220px] truncate text-sm font-medium text-ink">
                 {session?.fullName ?? ROLE_LABELS[role]}
-              </span>
-              <span className="2xl:hidden">{ROLE_SHORT_LABELS[role]}</span>
-              <span className="sr-only">{ROLE_LABELS[role]}</span>
-            </span>
+              </p>
+              <p className="mt-0.5 text-xs text-muted">{ROLE_LABELS[role]}</p>
+            </div>
 
             <div
-              className="hidden h-9 w-9 place-items-center border border-line bg-panel font-mono text-[10px] font-medium tracking-[0.08em] text-soft md:grid"
-              aria-hidden="true"
+              className="hidden h-10 w-10 place-items-center rounded-full bg-deep text-xs font-semibold text-soft md:grid"
               title={ROLE_LABELS[role]}
             >
-              {ROLE_INITIALS[role]}
+              <span aria-hidden="true">{ROLE_INITIALS[role]}</span>
+              <span className="sr-only">
+                {ROLE_LABELS[role]}
+                {session ? `, ${session.fullName}` : ''}
+              </span>
             </div>
 
             <button
-              ref={mobileTriggerRef}
               type="button"
               onClick={clearRole}
-              className="btn-icon hidden border-0 sm:inline-flex"
+              className="btn-icon hidden sm:inline-flex"
               aria-label="Выйти"
               title="Выйти"
             >
@@ -375,9 +314,10 @@ export function Layout() {
             </button>
 
             <button
+              ref={mobileTriggerRef}
               type="button"
               onClick={() => setMobileOpen((value) => !value)}
-              className="btn-icon border-0 lg:hidden"
+              className="btn-icon lg:hidden"
               aria-label={mobileOpen ? 'Закрыть меню' : 'Открыть меню'}
               aria-expanded={mobileOpen}
               aria-controls="mobile-navigation"
@@ -401,9 +341,9 @@ export function Layout() {
         </div>
       </main>
 
-      <footer className="border-t border-line">
-        <div className="mx-auto flex w-full max-w-[1560px] flex-col gap-2 px-4 py-5 font-mono text-[9px] uppercase tracking-[0.16em] text-faint sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-10">
-          <p>ПромСкан · промышленное зрение</p>
+      <footer className="border-t border-line bg-panel">
+        <div className="mx-auto flex w-full max-w-[1560px] flex-col gap-1 px-4 py-5 text-xs text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-10">
+          <p>ПромСкан · разработано для КСТ Энерго</p>
           <p>Демо-стенд · данные не покидают браузер</p>
         </div>
       </footer>

@@ -22,6 +22,10 @@ export default defineConfig({
     host: exposeToLan ? true : '127.0.0.1',
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/front': 'http://127.0.0.1:8000',
+      '/static': 'http://127.0.0.1:8000',
+    },
   },
   test: {
     environment: 'jsdom',

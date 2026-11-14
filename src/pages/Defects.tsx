@@ -58,7 +58,7 @@ const STATUS_META: Record<
 };
 
 function formatCount(value: number): string {
-  return String(value).padStart(2, '0');
+  return String(value);
 }
 
 function getErrorMessage(error: unknown): string {
@@ -168,7 +168,6 @@ export function Defects() {
   return (
     <div className="space-y-10" data-mock={API_CONFIG.useMock ? 'api' : undefined}>
       <PageHeader
-        index="02"
         label="Оперативный контроль"
         title="Панель диспетчера"
         description="Открытые и закрытые дефекты с мобильных сканов. Сортировка по времени обнаружения."
@@ -176,7 +175,7 @@ export function Defects() {
           <div className="flex items-end gap-6">
             <div>
               <p className="technical">Критические</p>
-              <p className="mt-1 font-mono text-4xl leading-none tracking-[-0.04em] text-danger tabular">
+              <p className="mt-1 text-4xl leading-none text-danger tabular">
                 {countLabel(critical)}
               </p>
             </div>
@@ -194,7 +193,7 @@ export function Defects() {
             <div key={item.label} className="bg-panel px-5 py-6">
               <p className="technical">{item.label}</p>
               <p
-                className={`mt-2 font-mono text-[2.25rem] leading-none tracking-[-0.04em] tabular ${item.tone}`}
+                className={`mt-2 text-[2.25rem] leading-none tabular ${item.tone}`}
               >
                 {countLabel(item.value)}
               </p>
@@ -208,7 +207,7 @@ export function Defects() {
           <div>
             <h2
               id="defects-heading"
-              className="text-2xl font-medium tracking-[-0.025em] text-ink"
+              className="text-2xl font-medium text-ink"
             >
               Последние дефекты
             </h2>
@@ -239,14 +238,14 @@ export function Defects() {
             {loading ? (
               <p
                 role="status"
-                className="border border-line bg-panel px-5 py-12 text-center text-muted"
+                className="rounded-xl border border-line bg-panel px-5 py-12 text-center text-muted"
               >
                 Загрузка отчётов…
               </p>
             ) : error ? (
               <div
                 role="alert"
-                className="flex flex-col gap-4 border border-line bg-panel p-5"
+                className="flex flex-col gap-4 rounded-xl border border-line bg-panel p-5"
               >
                 <p className="text-danger">
                   Не удалось загрузить данные. {error}
@@ -262,7 +261,7 @@ export function Defects() {
             ) : defects.length === 0 ? (
               <p
                 role="status"
-                className="border border-line bg-panel px-5 py-12 text-center text-muted"
+                className="rounded-xl border border-line bg-panel px-5 py-12 text-center text-muted"
               >
                 Отчётов пока нет. Они появятся после сохранения результатов
                 сканирования.
@@ -275,17 +274,17 @@ export function Defects() {
                 return (
                   <article
                     key={defect.id}
-                    className="border border-line bg-panel p-4"
+                    className="rounded-xl border border-line bg-panel p-4"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-medium text-ink">{defect.title}</p>
-                        <p className="mt-1 break-all font-mono text-[10px] tracking-[0.08em] text-faint">
+                        <p className="mt-1 break-all text-xs text-faint">
                           {defect.id}
                         </p>
                       </div>
                       <span
-                        className={`inline-flex shrink-0 items-center gap-2 font-mono text-[9px] uppercase tracking-[0.08em] ${severity.text}`}
+                        className={`inline-flex shrink-0 items-center gap-2 text-xs ${severity.text}`}
                       >
                         <span
                           className={`h-1.5 w-1.5 shrink-0 ${severity.dot}`}
@@ -311,7 +310,7 @@ export function Defects() {
                       <div className="flex items-center justify-between gap-4 py-2.5">
                         <dt className="technical">Статус</dt>
                         <dd
-                          className={`inline-flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.08em] ${status.text}`}
+                          className={`inline-flex items-center gap-2 text-xs ${status.text}`}
                         >
                           <span
                             className={`h-1.5 w-1.5 shrink-0 ${status.dot}`}
@@ -334,7 +333,7 @@ export function Defects() {
                       </div>
                       <div className="flex items-center justify-between gap-4 py-2.5">
                         <dt className="technical">Время</dt>
-                        <dd className="font-mono text-xs text-faint tabular">
+                        <dd className="text-xs text-faint tabular">
                           <time
                             dateTime={defect.createdAt}
                             title={defect.createdAt}
@@ -361,7 +360,7 @@ export function Defects() {
             )}
           </div>
         ) : (
-        <div className="mt-6 overflow-x-auto border border-line bg-panel" aria-busy={loading}>
+        <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-panel" aria-busy={loading}>
           <table className="w-full min-w-[860px] text-left text-sm" aria-labelledby="defects-heading">
             <thead className="table-head bg-raised">
               <tr>
@@ -421,7 +420,7 @@ export function Defects() {
                     <td className="px-5 py-4">
                       <p className="font-medium text-ink">{defect.title}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <p className="font-mono text-[10px] tracking-[0.08em] text-faint">
+                        <p className="text-xs text-faint">
                           {defect.id}
                         </p>
                         <a
@@ -429,7 +428,7 @@ export function Defects() {
                           target="_blank"
                           rel="noreferrer"
                           aria-label={`Открыть задачу ${defect.id}`}
-                          className="inline-flex min-h-11 items-center gap-1 py-2 pr-2 font-mono text-[11px] uppercase tracking-[0.06em] text-soft underline-offset-2 transition-colors hover:text-ink hover:underline"
+                          className="inline-flex min-h-11 items-center gap-1 py-2 pr-2 text-xs text-soft underline-offset-2 transition-colors hover:text-ink hover:underline"
                         >
                           Открыть
                           <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -442,7 +441,7 @@ export function Defects() {
                     </td>
                     <td className="px-5 py-4">
                       <span
-                        className={`inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] ${severity.text}`}
+                        className={`inline-flex items-center gap-2 text-xs ${severity.text}`}
                       >
                         <span
                           className={`h-1.5 w-1.5 shrink-0 ${severity.dot}`}
@@ -453,7 +452,7 @@ export function Defects() {
                     </td>
                     <td className="px-5 py-4">
                       <span
-                        className={`inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] ${status.text}`}
+                        className={`inline-flex items-center gap-2 text-xs ${status.text}`}
                       >
                         <span
                           className={`h-1.5 w-1.5 shrink-0 ${status.dot}`}
@@ -471,7 +470,7 @@ export function Defects() {
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-right font-mono text-xs text-faint tabular">
+                    <td className="px-5 py-4 text-right text-xs text-faint tabular">
                       <time dateTime={defect.createdAt} title={defect.createdAt}>{defect.time}</time>
                     </td>
                   </tr>
@@ -482,7 +481,7 @@ export function Defects() {
         </div>
         )}
 
-        <p className="mt-3 hidden text-[11px] text-faint sm:block" data-mock="assignee-note">
+        <p className="mt-3 hidden text-xs text-faint sm:block" data-mock="assignee-note">
           {API_CONFIG.useMock ? 'Демо-данные API. ' : ''}
           Исполнитель приходит из задачи. «Не назначен» — только для задач без назначения.
         </p>

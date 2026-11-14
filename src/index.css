@@ -5,24 +5,25 @@
 :root {
   color-scheme: light;
 
-  /* ПромСкан: светлая инженерная палитра с синим акцентом */
-  --bg: 244 248 252;
-  --bg-deep: 234 241 248;
+  /* ПромСкан x КСТ Энерго: фирменный синий #135aa6, текст #313132, фон #f4f5f8 */
+  --bg: 244 245 248;
+  --bg-deep: 238 240 245;
   --panel: 255 255 255;
-  --raised: 247 250 255;
-  --line: 220 229 239;
-  --line-strong: 196 210 226;
-  --ink: 22 38 56;
-  --soft: 52 75 98;
-  --muted: 86 109 131;
-  --faint: 99 123 146;
-  --accent: 23 105 170;
-  --accent-hi: 18 91 152;
+  --raised: 246 247 248;
+  --line: 229 231 234;
+  --line-strong: 213 217 222;
+  --ink: 49 49 50;
+  --soft: 66 68 74;
+  --muted: 90 94 103;
+  --faint: 107 111 120;
+  --accent: 19 90 166;
+  --accent-hi: 15 74 137;
   --accent-ink: 255 255 255;
+  --hero: 14 52 98;
   --ok: 42 111 62;
   --warn: 138 90 0;
   --danger: 180 35 24;
-  --info: 37 99 168;
+  --info: 30 98 170;
 }
 
 html {
@@ -83,68 +84,51 @@ textarea:focus-visible {
 
 @layer components {
   .skip-link {
-    @apply fixed left-4 top-4 z-[100] -translate-y-24 bg-accent px-4 py-3 text-sm font-medium text-accent-ink transition-transform duration-150 focus:translate-y-0;
+    @apply fixed left-4 top-4 z-[100] -translate-y-24 rounded-lg bg-accent px-4 py-3 text-sm font-medium text-accent-ink transition-transform duration-150 focus:translate-y-0;
   }
 
   .btn-primary {
-    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-accent px-4 text-sm font-medium text-accent-ink shadow-sm transition duration-150 hover:-translate-y-px hover:bg-accent-hi hover:shadow-md active:translate-y-0 active:shadow-sm disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-accent px-5 text-sm font-medium text-accent-ink transition-colors duration-150 hover:bg-accent-hi disabled:pointer-events-none disabled:opacity-40;
   }
 
   .btn-secondary {
-    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-line-strong bg-panel px-4 text-sm font-medium text-soft transition duration-150 hover:-translate-y-px hover:border-muted hover:bg-raised hover:text-ink active:translate-y-0 disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-line-strong bg-panel px-4 text-sm font-medium text-soft transition-colors duration-150 hover:border-accent/50 hover:bg-accent/[0.05] hover:text-accent disabled:pointer-events-none disabled:opacity-40;
   }
 
   .btn-ghost {
-    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-muted transition duration-150 hover:bg-ink/[0.045] hover:text-ink disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-muted transition-colors duration-150 hover:bg-accent/[0.07] hover:text-accent disabled:pointer-events-none disabled:opacity-40;
   }
 
   .btn-icon {
-    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-line bg-transparent text-muted transition duration-150 hover:border-line-strong hover:bg-ink/[0.045] hover:text-ink;
+    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-accent/[0.07] text-accent transition-colors duration-150 hover:bg-accent/[0.14];
   }
 
   .input {
-    @apply h-11 w-full rounded-sm border border-line bg-panel px-3 text-sm text-ink outline-none transition-colors duration-150 placeholder:text-faint hover:border-line-strong focus:border-accent focus:ring-1 focus:ring-accent/25;
+    @apply h-11 w-full rounded-lg border border-line-strong bg-panel px-3 text-sm text-ink outline-none transition-colors duration-150 placeholder:text-faint hover:border-muted focus:border-accent focus:ring-1 focus:ring-accent/25;
   }
 
   .label {
-    @apply mb-2 block font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-muted;
+    @apply mb-1.5 block text-xs font-medium text-muted;
   }
 
   .eyebrow {
-    @apply font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-accent;
+    @apply text-xs font-medium text-accent;
   }
 
   .tag {
-    @apply inline-flex h-7 items-center gap-2 border px-2 font-mono text-[10px] font-medium uppercase tracking-[0.12em];
+    @apply inline-flex h-6 items-center gap-1.5 rounded-md border px-2 text-xs font-medium;
   }
 
   .table-head {
-    @apply border-b border-line font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-faint;
+    @apply border-b border-line text-xs font-medium text-muted;
   }
 
   .technical {
     @apply font-sans text-sm font-semibold normal-case tracking-normal text-soft;
   }
 
-  .blueprint {
-    background-image:
-      linear-gradient(rgb(var(--line-strong) / 0.28) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(var(--line-strong) / 0.28) 1px, transparent 1px);
-    background-size: 72px 72px;
-    background-position: center;
-  }
-
   .scanline {
-    @apply pointer-events-none absolute inset-x-0 h-px animate-scan;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgb(var(--accent) / 0.7) 22%,
-      rgb(var(--accent) / 0.9) 50%,
-      rgb(var(--accent) / 0.7) 78%,
-      transparent
-    );
-    box-shadow: 0 0 14px rgb(var(--accent) / 0.3);
+    @apply pointer-events-none absolute inset-x-0 h-0.5 animate-scan bg-accent/60;
   }
 }
 

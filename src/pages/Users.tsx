@@ -90,7 +90,7 @@ function InvitationLine({ employee }: { employee: Employee }) {
 
   if (invitation.status === 'sent') {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-ok">
+      <span className="inline-flex items-center gap-1 text-xs text-ok">
         <Mail className="h-3 w-3" aria-hidden="true" />
         Письмо отправлено
       </span>
@@ -99,7 +99,7 @@ function InvitationLine({ employee }: { employee: Employee }) {
 
   if (invitation.status === 'queued') {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-warn">
+      <span className="inline-flex items-center gap-1 text-xs text-warn">
         <Mail className="h-3 w-3" aria-hidden="true" />
         Письмо в очереди
       </span>
@@ -108,7 +108,7 @@ function InvitationLine({ employee }: { employee: Employee }) {
 
   if (invitation.status === 'failed') {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-danger">
+      <span className="inline-flex items-center gap-1 text-xs text-danger">
         <AlertCircle className="h-3 w-3" aria-hidden="true" />
         Письмо не отправлено
       </span>
@@ -116,7 +116,7 @@ function InvitationLine({ employee }: { employee: Employee }) {
   }
 
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] text-faint">
+    <span className="inline-flex items-center gap-1 text-xs text-faint">
       <Mail className="h-3 w-3" aria-hidden="true" />
       Письмо не отправлялось
     </span>
@@ -178,14 +178,14 @@ function KeyDeliveryDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="key-delivery-title"
-        className="relative w-full max-w-[520px] border border-line bg-panel shadow-sheet"
+        className="relative w-full max-w-[520px] rounded-xl border border-line bg-panel shadow-sheet"
       >
         <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-5 sm:px-7">
           <div>
             <p className="eyebrow">Ключ доступа</p>
             <h2
               id="key-delivery-title"
-              className="mt-2 text-2xl font-medium tracking-[-0.035em] text-ink"
+              className="mt-2 text-2xl font-medium text-ink"
             >
               {title}
             </h2>
@@ -235,7 +235,7 @@ function KeyDeliveryDialog({
                 </>
               )}
             </p>
-            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
+            <p className="mt-2 text-xs text-faint">
               provider: {invitation.provider ?? '—'} · status: {invitation.status}
             </p>
           </div>
@@ -246,13 +246,13 @@ function KeyDeliveryDialog({
               aria-hidden="true"
             />
             <div>
-              <p className="text-[11px] leading-5 text-muted">
+              <p className="text-xs leading-5 text-muted">
                 Ключ не показывается в веб-панели: администратор его не видит
                 и не может скопировать. Сотрудник получает ключ только на свой
                 email; старый ключ при перевыпуске перестаёт работать.
               </p>
               {!failed ? (
-                <p className="mt-2 text-[11px] leading-5 text-faint">
+                <p className="mt-2 text-xs leading-5 text-faint">
                   Демо-режим: письмо сохранено в mock-outbox браузера. Как его
                   открыть — в README, раздел «Ключи и приглашения».
                 </p>
@@ -389,7 +389,7 @@ function AddEmployeeModal({
             <p className="eyebrow">Новый сотрудник</p>
             <h2
               id="add-employee-title"
-              className="mt-2 text-2xl font-medium tracking-[-0.035em] text-ink"
+              className="mt-2 text-2xl font-medium text-ink"
             >
               Добавление сотрудника
             </h2>
@@ -416,8 +416,7 @@ function AddEmployeeModal({
         >
           <div className="min-h-0 flex-1 space-y-9 overflow-y-auto px-5 py-7 sm:px-7">
             <fieldset>
-              <legend className="flex w-full items-center gap-3 border-b border-line pb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
-                <span className="text-accent">01</span>
+              <legend className="w-full border-b border-line pb-2 text-sm font-semibold text-ink">
                 Идентификация
               </legend>
 
@@ -470,8 +469,7 @@ function AddEmployeeModal({
             </fieldset>
 
             <fieldset>
-              <legend className="flex w-full items-center gap-3 border-b border-line pb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
-                <span className="text-accent">02</span>
+              <legend className="w-full border-b border-line pb-2 text-sm font-semibold text-ink">
                 Доступ
               </legend>
 
@@ -514,8 +512,7 @@ function AddEmployeeModal({
             </fieldset>
 
             <fieldset>
-              <legend className="flex w-full items-center gap-3 border-b border-line pb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
-                <span className="text-accent">03</span>
+              <legend className="w-full border-b border-line pb-2 text-sm font-semibold text-ink">
                 Ключ и письмо
               </legend>
 
@@ -525,7 +522,7 @@ function AddEmployeeModal({
                     <p className="text-sm font-medium text-ink">
                       Ключ уйдёт только на email
                     </p>
-                    <p className="mt-1 text-[11px] leading-5 text-faint">
+                    <p className="mt-1 text-xs leading-5 text-faint">
                       10 символов, криптографический генератор. В веб-панели
                       ключ не отображается и не копируется.
                     </p>
@@ -545,7 +542,7 @@ function AddEmployeeModal({
                     <span className="block text-sm font-medium text-ink">
                       Письмо с ключом и кодом подтверждения
                     </span>
-                    <span className="mt-1 block text-[11px] leading-5 text-faint">
+                    <span className="mt-1 block text-xs leading-5 text-faint">
                       В демо письмо складывается в mock-outbox браузера, реальную
                       отправку выполнит backend после подключения SMTP/Gmail.
                     </span>
@@ -559,7 +556,7 @@ function AddEmployeeModal({
                 className="mt-0.5 h-4 w-4 shrink-0 text-warn"
                 aria-hidden="true"
               />
-              <p className="text-[11px] leading-5 text-muted">
+              <p className="text-xs leading-5 text-muted">
                 Ключ не попадает в интерфейс администратора. В production его
                 генерирует сервер, хранит только Argon2id-хеш и отправляет
                 письмо через защищённый провайдер.
@@ -720,25 +717,21 @@ export function Users() {
 
   const summary = [
     {
-      index: '01',
       label: 'Всего сотрудников',
       value: employees.length,
       note: 'Веб-панель и мобильные задания',
     },
     {
-      index: '02',
       label: 'Администраторы',
       value: admins,
       note: 'Сканер, диспетчерская и сотрудники',
     },
     {
-      index: '03',
       label: 'Диспетчеры',
       value: dispatchers,
       note: 'Сканер и панель дефектов',
     },
     {
-      index: '04',
       label: 'Рабочие',
       value: engineers,
       note: 'Только веб-сканер',
@@ -748,7 +741,6 @@ export function Users() {
   return (
     <div className="space-y-10">
       <PageHeader
-        index="03"
         label="Управление доступом"
         title="Сотрудники"
         description="Каждый сотрудник входит по индивидуальному 10-значному ключу. Ключ создаётся автоматически, отправляется на email сотрудника и не показывается администратору."
@@ -769,16 +761,11 @@ export function Users() {
         <div className="grid grid-cols-2 gap-px border-y border-line bg-line lg:grid-cols-4">
           {summary.map((item) => (
             <div key={item.label} className="min-w-0 bg-panel px-4 py-5 sm:px-5 sm:py-6">
-              <div className="flex items-baseline justify-between gap-2">
-                <p className="technical">{item.label}</p>
-                <span className="font-mono text-[9px] tracking-[0.16em] text-faint">
-                  {item.index}
-                </span>
-              </div>
-              <p className="mt-3 font-mono text-[2.5rem] leading-none tracking-[-0.05em] text-ink tabular sm:text-[3rem]">
-                {String(item.value).padStart(2, '0')}
+              <p className="technical">{item.label}</p>
+              <p className="mt-3 text-[2rem] font-semibold leading-none text-ink tabular sm:text-[2.5rem]">
+                {item.value}
               </p>
-              <p className="mt-2 text-[11px] leading-4 text-faint sm:text-xs sm:leading-5">
+              <p className="mt-2 text-xs leading-4 text-faint sm:text-xs sm:leading-5">
                 {item.note}
               </p>
             </div>
@@ -791,7 +778,7 @@ export function Users() {
           <div>
             <h2
               id="staff-heading"
-              className="text-2xl font-medium tracking-[-0.025em] text-ink"
+              className="text-2xl font-medium text-ink"
             >
               Штат и ключи доступа
             </h2>
@@ -802,7 +789,7 @@ export function Users() {
             </p>
           </div>
           <span className="tag w-fit border-line text-muted">
-            {String(employees.length).padStart(2, '0')} записей
+            {employees.length} записей
           </span>
         </div>
 
@@ -822,12 +809,12 @@ export function Users() {
               return (
                 <article
                   key={employee.id}
-                  className="border border-line bg-panel p-4"
+                  className="rounded-xl border border-line bg-panel p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <span
-                        className="grid h-10 w-10 shrink-0 place-items-center border border-line bg-canvas font-mono text-[10px] font-medium tracking-[0.08em] text-soft"
+                        className="grid h-10 w-10 shrink-0 place-items-center border border-line bg-canvas text-xs font-medium text-soft"
                         aria-hidden="true"
                       >
                         {getInitials(employee.fullName)}
@@ -842,7 +829,7 @@ export function Users() {
                       </div>
                     </div>
                     <span
-                      className={`inline-flex shrink-0 items-center gap-2 font-mono text-[9px] uppercase tracking-[0.08em] ${roleMeta.text}`}
+                      className={`inline-flex shrink-0 items-center gap-2 text-xs ${roleMeta.text}`}
                     >
                       <span
                         className={`h-1.5 w-1.5 shrink-0 ${roleMeta.dot}`}
@@ -858,7 +845,7 @@ export function Users() {
 
                   <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
                     <code
-                      className="border border-line bg-deep px-2 py-1 font-mono text-xs tracking-[0.12em] text-faint"
+                      className="border border-line bg-deep px-2 py-1 text-xs text-faint"
                       title="Ключ хранится только в виде хеша"
                     >
                       {maskAccessKey()}
@@ -873,7 +860,7 @@ export function Users() {
                           ? undefined
                           : 'Ключи администраторов перевыпускает только директор'
                       }
-                      className="inline-flex h-11 items-center gap-1.5 border border-line px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-muted transition-colors hover:border-line-strong hover:text-ink disabled:opacity-50"
+                      className="inline-flex h-11 items-center gap-1.5 border border-line px-3 text-xs text-muted transition-colors hover:border-line-strong hover:text-ink disabled:opacity-50"
                     >
                       <RefreshCw
                         className={`h-3 w-3 ${
@@ -884,7 +871,7 @@ export function Users() {
                       Перевыпустить
                     </button>
                   </div>
-                  <p className="mt-1.5 font-mono text-[9px] uppercase tracking-[0.08em] text-faint">
+                  <p className="mt-1.5 text-xs text-faint">
                     создан {employee.keyCreatedAt.slice(0, 10)}
                   </p>
                 </article>
@@ -892,7 +879,7 @@ export function Users() {
             })}
           </div>
         ) : (
-        <div className="mt-6 overflow-x-auto border border-line bg-panel">
+        <div className="mt-6 overflow-x-auto rounded-xl border border-line bg-panel">
           <table className="w-full min-w-[820px] text-left text-sm">
             <thead className="table-head bg-raised">
               <tr>
@@ -924,7 +911,7 @@ export function Users() {
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         <span
-                          className="grid h-10 w-10 shrink-0 place-items-center border border-line bg-canvas font-mono text-[10px] font-medium tracking-[0.08em] text-soft"
+                          className="grid h-10 w-10 shrink-0 place-items-center border border-line bg-canvas text-xs font-medium text-soft"
                           aria-hidden="true"
                         >
                           {getInitials(employee.fullName)}
@@ -933,7 +920,7 @@ export function Users() {
                           <p className="font-medium text-ink">
                             {employee.fullName}
                           </p>
-                          <p className="mt-1 font-mono text-[9px] tracking-[0.1em] text-faint">
+                          <p className="mt-1 text-xs text-faint">
                             {employee.id}
                           </p>
                         </div>
@@ -947,7 +934,7 @@ export function Users() {
                     </td>
                     <td className="px-5 py-4">
                       <span
-                        className={`inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] ${roleMeta.text}`}
+                        className={`inline-flex items-center gap-2 text-xs ${roleMeta.text}`}
                       >
                         <span
                           className={`h-1.5 w-1.5 shrink-0 ${roleMeta.dot}`}
@@ -959,7 +946,7 @@ export function Users() {
                     <td className="px-5 py-4">
                       <div className="flex flex-wrap items-center gap-2">
                         <code
-                          className="border border-line bg-deep px-2 py-1 font-mono text-xs tracking-[0.12em] text-faint"
+                          className="border border-line bg-deep px-2 py-1 text-xs text-faint"
                           title="Ключ хранится только в виде хеша"
                         >
                           {maskAccessKey()}
@@ -974,7 +961,7 @@ export function Users() {
                               ? undefined
                               : 'Ключи администраторов перевыпускает только директор'
                           }
-                          className="inline-flex h-11 items-center gap-1.5 border border-line px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-muted transition-colors hover:border-line-strong hover:text-ink disabled:opacity-50"
+                          className="inline-flex h-11 items-center gap-1.5 border border-line px-3 text-xs text-muted transition-colors hover:border-line-strong hover:text-ink disabled:opacity-50"
                         >
                           <RefreshCw
                             className={`h-3 w-3 ${
@@ -985,7 +972,7 @@ export function Users() {
                           Перевыпустить
                         </button>
                       </div>
-                      <p className="mt-1.5 font-mono text-[9px] uppercase tracking-[0.08em] text-faint">
+                      <p className="mt-1.5 text-xs text-faint">
                         создан {employee.keyCreatedAt.slice(0, 10)}
                       </p>
                     </td>
@@ -997,7 +984,7 @@ export function Users() {
         </div>
         )}
 
-        <div className="mt-3 flex flex-col gap-2 text-[11px] text-faint sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-3 flex flex-col gap-2 text-xs text-faint sm:flex-row sm:items-center sm:justify-between">
           <p>Показано {employees.length} сотрудников</p>
           <p>
             Демо-справочник · в localStorage только PBKDF2-хеши, письма — в mock-outbox
