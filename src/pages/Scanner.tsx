@@ -23,6 +23,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
+import { RealtimeDefects } from '../components/RealtimeDefects';
 import {
   API_CONFIG,
   createReport,
@@ -136,12 +137,6 @@ const DATE_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
 function formatDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : DATE_FORMATTER.format(date);
-}
-
-function formatConditionProbability(value: number | null | undefined): string {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? `${Math.round(value * 100)}%`
-    : 'Нет данных';
 }
 
 function describeCameraError(error: unknown): string {
@@ -720,6 +715,7 @@ function DetailedAnalysisView({ result }: { result: DetailedAnalysisResult }) {
 
 interface LiveReportProps {
   analysis: InspectionResult;
+  detectionUnavailable: boolean;
   activeDefect: Defect | null;
   activeNode: EquipmentNode | null;
   selectedId: string | null;
@@ -733,6 +729,7 @@ interface LiveReportProps {
 
 function LiveReport({
   analysis,
+  detectionUnavailable,
   activeDefect,
   activeNode,
   selectedId,
@@ -890,7 +887,7 @@ function LiveReport({
         <span className="eyebrow">Отчёт · live</span>
         <span className="inline-flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
           <span
-            className="h-1.5 w-1.5 animate-pulse-soft bg-ok"
+            className={`h-1.5 w-1.5 ${detectionUnavailable ? 'bg-warn' : 'animate-pulse-soft bg-ok'}`}
             aria-hidden="true"
           />
           vision: {analysis.meta.vision_mode}
@@ -907,6 +904,12 @@ function LiveReport({
           {formatDate(displayedEquipment.last_maintenance_at)}
         </p>
 
+        {detectionUnavailable ? (
+          <p className="mt-3 border-l-2 border-warn pl-3 text-xs leading-5 text-warn">
+            Показан предыдущий осмотр. Сводка и рекомендации не обновлены.
+          </p>
+        ) : null}
+
         <div className="mt-4 border-l-2 border-accent pl-3 sm:mt-5 sm:pl-4">
           <p className="technical">Сводка</p>
           <p className="mt-2 line-clamp-2 text-sm leading-6 text-soft sm:line-clamp-none">
@@ -914,29 +917,13 @@ function LiveReport({
           </p>
         </div>
 
-        <section className="mt-5 border-y border-line py-4" aria-labelledby="condition-parameters-heading">
-          <h3 id="condition-parameters-heading" className="technical">Параметры realtime</h3>
-          <dl className="mt-2 divide-y divide-line">
-            <div className="flex items-center justify-between gap-3 py-2">
-              <dt className="text-xs text-soft">Утечка масла</dt>
-              <dd className="font-mono text-xs tabular text-ink">
-                {formatConditionProbability(analysis.condition_parameters?.oil_leak_probability)}
-              </dd>
-            </div>
-            <div className="flex items-center justify-between gap-3 py-2">
-              <dt className="text-xs text-soft">Ржавчина</dt>
-              <dd className="font-mono text-xs tabular text-ink">
-                {formatConditionProbability(analysis.condition_parameters?.rust_probability)}
-              </dd>
-            </div>
-            <div className="flex items-center justify-between gap-3 py-2">
-              <dt className="text-xs text-soft">Плохой сварной шов</dt>
-              <dd className="font-mono text-xs tabular text-ink">
-                {formatConditionProbability(analysis.condition_parameters?.poor_weld_probability)}
-              </dd>
-            </div>
-          </dl>
-        </section>
+        <RealtimeDefects
+          defects={analysis.defects}
+          isMock={analysis.meta.vision_mode === 'mock'}
+          isSnapshot={Boolean(snapshotPhoto)}
+          unavailable={detectionUnavailable}
+          analyzedAt={analysis.meta.analyzed_at}
+        />
 
         <section className="mt-5" aria-label="Подробный анализ дефектов">
           <button
@@ -1120,12 +1107,12 @@ function LiveReport({
           <div className="flex items-center justify-between border-b border-line pb-2">
             <p className="technical">Зоны риска</p>
             <span className="font-mono text-[10px] text-faint">
-              0{analysis.defects.length}
+              {String(detectionUnavailable ? 0 : analysis.defects.length).padStart(2, '0')}
             </span>
           </div>
 
           <div className="divide-y divide-line">
-            {analysis.defects.map((defect) => {
+            {(detectionUnavailable ? [] : analysis.defects).map((defect) => {
               const meta = SEVERITY_META[defect.severity];
               const active =
                 (activeDefect?.id ?? null) === defect.id;
@@ -1664,11 +1651,20 @@ export function Scanner() {
           return;
         }
 
-        const result = await inspectImage(frame, 'pump-cns-38-220', tick);
+        const result = await inspectImage(frame, 'pump-cns-38-220', tick, {
+          live: status === 'live',
+        });
 
         if (!cancelled) {
           setAnalysisImage(frame ?? imageBlobRef.current);
           setAnalysis(result);
+          // A frame is a replacement, not an append. A vanished zone must not
+          // remain selected (or become selected again if its ID reappears).
+          const keepVisible = (id: string | null) =>
+            id && result.defects.some((defect) => defect.id === id) ? id : null;
+          setHoveredDefectId(keepVisible);
+          setFocusedDefectId(keepVisible);
+          setSelectedDefectId(keepVisible);
           setLiveError(null);
         }
       } catch {
@@ -1676,6 +1672,9 @@ export function Scanner() {
           setLiveError(
             'Не удалось получить результат распознавания. Проверьте, что backend запущен и VITE_API_BASE_URL указан верно.',
           );
+          setHoveredDefectId(null);
+          setFocusedDefectId(null);
+          setSelectedDefectId(null);
         }
       } finally {
         inFlight = false;
@@ -1961,7 +1960,7 @@ export function Scanner() {
 
             {status === 'live' ? <div className="scanline" /> : null}
 
-            {analysis && (status === 'live' || status === 'ready') ? (
+            {analysis && !liveError && (status === 'live' || status === 'ready') ? (
               <DefectOverlay
                 analysis={analysis}
                 activeId={activeDefect?.id ?? null}
@@ -2029,6 +2028,7 @@ export function Scanner() {
           {analysis ? (
             <LiveReport
               analysis={analysis}
+              detectionUnavailable={Boolean(liveError)}
               activeDefect={activeDefect}
               activeNode={activeNode}
               selectedId={selectedDefectId}
@@ -2049,7 +2049,7 @@ export function Scanner() {
         <FullscreenCameraView
           status={status}
           error={error}
-          analysis={analysis}
+          analysis={liveError ? null : analysis}
           activeDefectId={activeDefect?.id ?? null}
           selectedDefectId={selectedDefectId}
           frontCamera={frontCamera}

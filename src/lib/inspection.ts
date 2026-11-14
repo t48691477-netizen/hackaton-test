@@ -92,6 +92,7 @@ export interface InspectionMeta {
 export interface InspectionResult {
   inspection_id: string;
   equipment: EquipmentDetail;
+  /** Complete detection snapshot of one frame; never an accumulated history. */
   defects: Defect[];
   condition_parameters: ConditionParameters;
   llm: LlmAssessment;
@@ -100,6 +101,7 @@ export interface InspectionResult {
 }
 
 export interface ConditionParameters {
+  /** Optional classifier scores for detailed analysis, not detection presence. */
   oil_leak_probability: number | null;
   rust_probability: number | null;
   poor_weld_probability: number | null;
@@ -390,6 +392,47 @@ export function createMockInspection(
       },
       processing_ms: 34 + Math.round(Math.abs(wave) * 18),
       analyzed_at: new Date().toISOString(),
+    },
+  };
+}
+
+/**
+ * Synthetic live-preview cycle, unrelated to the actual camera content.
+ * Ticks 1–3: all zones; 4–5: two; 6–7: one; 8–9: none; 10–12: oil only.
+ * Photo analysis and saved fixtures continue to use createMockInspection().
+ */
+export function createMockLiveInspection(
+  tick: number,
+  equipment: EquipmentDetail = MOCK_EQUIPMENT,
+): InspectionResult {
+  const result = createMockInspection(tick, equipment);
+  const phase = Math.max(0, Math.trunc(tick) - 1) % 12;
+  const defects = phase < 3
+    ? result.defects
+    : phase < 5
+      ? result.defects.slice(0, 2)
+      : phase < 7
+        ? result.defects.slice(0, 1)
+        : phase < 9
+          ? []
+          : result.defects.slice(2);
+
+  return {
+    ...result,
+    defects,
+    summary: defects.length > 0
+      ? `Демо-кадр. Зон риска: ${defects.length}. ${defects.map((defect) => defect.label).join('; ')}.`
+      : 'В этом демо-кадре детекций нет. Это не подтверждает исправность оборудования.',
+    llm: {
+      criticality: defects.some((defect) => defect.severity === 'high')
+        ? 'high'
+        : defects.some((defect) => defect.severity === 'medium') ? 'medium' : 'low',
+      probable_cause: defects.length > 0
+        ? 'Демо-оценка: причина дефектов требует проверки специалистом.'
+        : 'В текущем демо-кадре дефекты не обнаружены. Диагноз не сформирован.',
+      recommendation_steps: defects.length > 0
+        ? defects.map((defect) => defect.recommendation)
+        : ['Продолжить осмотр с другого ракурса; отсутствие детекций не заменяет проверку инженером.'],
     },
   };
 }

@@ -244,7 +244,7 @@ describe('веб-сканер', () => {
     expect(inspectImageSpy).not.toHaveBeenCalled();
     await advanceTime(1);
     expect(inspectImageSpy).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('Трещина корпуса')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Дефект: Трещина корпуса, уверенность/i })).toBeInTheDocument();
 
     await advanceTime(1799);
     expect(inspectImageSpy).toHaveBeenCalledTimes(1);
@@ -265,13 +265,15 @@ describe('веб-сканер', () => {
     ).not.toBeInTheDocument();
 
     expect(
-      await screen.findByText('Трещина корпуса', {}, { timeout: 3000 }),
+      await screen.findByRole('button', { name: /^Дефект: Трещина корпуса, уверенность/i }, { timeout: 3000 }),
     ).toBeInTheDocument();
     const parameters = screen.getByRole('region', { name: 'Параметры realtime' });
-    expect(within(parameters).getByText('Утечка масла')).toBeInTheDocument();
-    expect(within(parameters).getByText('Ржавчина')).toBeInTheDocument();
-    expect(within(parameters).getByText('Плохой сварной шов')).toBeInTheDocument();
-    expect(within(parameters).getAllByText('Нет данных')).toHaveLength(3);
+    expect(within(parameters).getByText('Трещина корпуса')).toBeInTheDocument();
+    expect(within(parameters).getByText('Износ крепления')).toBeInTheDocument();
+    expect(within(parameters).getByText('Масляный след')).toBeInTheDocument();
+    expect(within(parameters).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(parameters).queryByText('Нет данных')).not.toBeInTheDocument();
+    expect(within(parameters).queryByText('Плохой сварной шов')).not.toBeInTheDocument();
     expect(
       screen.getByText('Технические характеристики'),
     ).toBeInTheDocument();
@@ -327,6 +329,118 @@ describe('веб-сканер', () => {
     expect(within(specs).queryByText('Подача')).not.toBeInTheDocument();
     expect(within(specs).queryByText('Чугун СЧ20')).not.toBeInTheDocument();
     expect(within(specs).queryByText('Толщина стенки')).not.toBeInTheDocument();
+  });
+
+  it('заменяет realtime-список новым кадром и сбрасывает исчезнувший выбор', async () => {
+    const first = createMockInspection(1);
+    first.defects = [{ ...first.defects[0], label: 'Утечка масла', confidence: 0.923 }];
+    first.condition_parameters = {
+      oil_leak_probability: 0,
+      rust_probability: 1,
+      poor_weld_probability: 1,
+    };
+    const empty = { ...createMockInspection(2), defects: [] };
+    const returned = { ...first, inspection_id: 'returned', defects: [{ ...first.defects[0], confidence: 0.811 }] };
+    inspectImageSpy.mockResolvedValueOnce(first).mockResolvedValueOnce(empty).mockResolvedValueOnce(returned);
+    await startLiveWithTimers();
+    await advanceTime(500);
+
+    const parameters = screen.getByRole('region', { name: 'Параметры realtime' });
+    expect(within(parameters).getByText('Утечка масла')).toBeInTheDocument();
+    expect(within(parameters).getByText('92,3%')).toBeInTheDocument();
+    expect(within(parameters).queryByText('Ржавчина')).not.toBeInTheDocument();
+    expect(within(parameters).queryByText('Плохой сварной шов')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Дефект: Утечка масла, уверенность/i }));
+
+    await advanceTime(1800);
+    expect(within(parameters).getByText('Дефекты в кадре не обнаружены')).toBeInTheDocument();
+    expect(within(parameters).queryByRole('list')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Рамка дефекта:/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Дефект:/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Активная зона')).not.toBeInTheDocument();
+
+    await advanceTime(1800);
+    expect(within(parameters).getByText('81,1%')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Дефект: Утечка масла, уверенность/i })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText('Активная зона')).not.toBeInTheDocument();
+  });
+
+  it('скрывает устаревшие realtime-детекции при ошибке и восстанавливается после ответа', async () => {
+    const result = createMockInspection(1);
+    inspectImageSpy.mockResolvedValueOnce(result).mockRejectedValueOnce(new Error('Offline')).mockResolvedValueOnce(result);
+    await startLiveWithTimers();
+    await advanceTime(500);
+    const parameters = screen.getByRole('region', { name: 'Параметры realtime' });
+    expect(within(parameters).getAllByRole('listitem')).toHaveLength(3);
+
+    await advanceTime(1800);
+    expect(within(parameters).getByText('Нет актуального результата')).toBeInTheDocument();
+    expect(within(parameters).queryByText('Дефекты в кадре не обнаружены')).not.toBeInTheDocument();
+    expect(within(parameters).queryByRole('list')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Рамка дефекта:/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Дефект:/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Показан предыдущий осмотр/)).toBeInTheDocument();
+
+    await advanceTime(1800);
+    expect(within(parameters).getAllByRole('listitem')).toHaveLength(3);
+    expect(screen.queryByText(/Показан предыдущий осмотр/)).not.toBeInTheDocument();
+  });
+
+  it('не считает медленный запрос пустым кадром и не запускает параллельный запрос', async () => {
+    const result = createMockInspection(1);
+    const pending = deferred<typeof result>();
+    inspectImageSpy.mockResolvedValueOnce(result).mockReturnValueOnce(pending.promise);
+    await startLiveWithTimers();
+    await advanceTime(500);
+    await advanceTime(3600);
+    expect(inspectImageSpy).toHaveBeenCalledTimes(2);
+    const parameters = screen.getByRole('region', { name: 'Параметры realtime' });
+    expect(within(parameters).getAllByRole('listitem')).toHaveLength(3);
+    await act(async () => pending.resolve({ ...result, defects: [] }));
+    expect(within(parameters).getByText('Дефекты в кадре не обнаружены')).toBeInTheDocument();
+  });
+
+  it('не оставляет старые рамки в полноэкранной камере после ошибки распознавания', async () => {
+    const result = createMockInspection(1);
+    inspectImageSpy.mockResolvedValueOnce(result).mockRejectedValueOnce(new Error('Offline')).mockResolvedValueOnce(result);
+    await startLiveWithTimers();
+    await advanceTime(500);
+    fireEvent.click(screen.getByRole('button', { name: 'Развернуть камеру на весь экран' }));
+
+    const camera = screen.getByRole('dialog', { name: 'Камера на весь экран' });
+    expect(within(camera).getAllByRole('button', { name: /^Рамка дефекта:/i })).toHaveLength(3);
+
+    await advanceTime(1800);
+    expect(within(camera).queryByRole('button', { name: /^Рамка дефекта:/i })).not.toBeInTheDocument();
+
+    await advanceTime(1800);
+    expect(within(camera).getAllByRole('button', { name: /^Рамка дефекта:/i })).toHaveLength(3);
+    fireEvent.click(within(camera).getByRole('button', { name: 'Свернуть камеру' }));
+  });
+
+  it('демонстрирует появление и исчезновение зон только в live-mock, не на фото', async () => {
+    await startLiveWithTimers();
+    await advanceTime(500);
+    const parameters = screen.getByRole('region', { name: 'Параметры realtime' });
+    expect(within(parameters).getAllByRole('listitem')).toHaveLength(3);
+    expect(inspectImageSpy.mock.calls[0][3]).toEqual({ live: true });
+    await advanceTime(1800 * 7);
+    expect(within(parameters).getByText('Дефекты в кадре не обнаружены')).toBeInTheDocument();
+    await advanceTime(1800 * 2);
+    expect(within(parameters).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(parameters).getByText('Масляный след')).toBeInTheDocument();
+
+    await uploadPhoto();
+    expect(screen.queryByRole('region', { name: 'Параметры realtime' })).not.toBeInTheDocument();
+    await advanceTime(500);
+    expect(inspectImageSpy.mock.calls.at(-1)?.[3]).toEqual({ live: false });
+    const photoParameters = screen.getByRole('region', { name: 'Параметры realtime' });
+    expect(within(photoParameters).getByText('Снимок')).toBeInTheDocument();
+    expect(within(photoParameters).getAllByRole('listitem')).toHaveLength(3);
+    const callCount = inspectImageSpy.mock.calls.length;
+    await advanceTime(1800 * 10);
+    expect(inspectImageSpy).toHaveBeenCalledTimes(callCount);
+    expect(within(photoParameters).getAllByRole('listitem')).toHaveLength(3);
   });
 
   it('не меняет раскладку списка дефектов при выборе строки', async () => {
@@ -419,7 +533,7 @@ describe('веб-сканер', () => {
 
     await advanceTime(500);
     expect(screen.getByRole('status')).toHaveTextContent('Снимок распознан');
-    expect(screen.getByText('Трещина корпуса')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Дефект: Трещина корпуса, уверенность/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'более точный отчет' })).toBeEnabled();
     expect(inspectImageSpy).toHaveBeenCalledTimes(1);
     await advanceTime(5400);
@@ -518,7 +632,7 @@ describe('веб-сканер', () => {
   it('показывает, что детальный backend пока не подключён', async () => {
     renderScanner();
     await uploadPhoto();
-    await screen.findByText('Трещина корпуса', {}, { timeout: 3000 });
+    await screen.findByRole('button', { name: /^Дефект: Трещина корпуса, уверенность/i }, { timeout: 3000 });
 
     fireEvent.click(screen.getByRole('button', { name: 'более точный отчет' }));
 
@@ -531,7 +645,7 @@ describe('веб-сканер', () => {
   it('передаёт последний кадр и показывает ответ детального анализа', async () => {
     renderScanner();
     const image = await uploadPhoto();
-    await screen.findByText('Трещина корпуса', {}, { timeout: 3000 });
+    await screen.findByRole('button', { name: /^Дефект: Трещина корпуса, уверенность/i }, { timeout: 3000 });
     const inspection = inspectImageSpy.mock.results[0].value;
     const result = await inspection;
     const detail: DetailedAnalysisResult = {
@@ -575,7 +689,7 @@ describe('веб-сканер', () => {
     await uploadPhoto();
     await advanceTime(500);
     expect(inspectImageSpy).toHaveBeenCalledTimes(2);
-    expect(screen.getByText('Трещина корпуса')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Дефект: Трещина корпуса, уверенность/i })).toBeInTheDocument();
 
     const staleResult = createMockInspection(99);
     staleResult.equipment = { ...staleResult.equipment, name: 'Устаревший результат камеры' };

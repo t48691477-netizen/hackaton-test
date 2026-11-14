@@ -15,6 +15,7 @@ import {
   MOCK_EQUIPMENT_LIST,
   MOCK_REPORTS,
   createMockInspection,
+  createMockLiveInspection,
   type ConditionParameters,
   type DetailedAnalysisResult,
   type EquipmentDetail,
@@ -279,6 +280,7 @@ export async function saveEquipment(
  *
  * В mock-режиме возвращает демо-результат для выбранного оборудования;
  * null-кадр разрешён для демонстрационного live-цикла без камеры.
+ * options.live включает сценарий исчезновения/появления зон только в mock.
  * В real-режиме отправляет обязательный кадр
  * multipart/form-data и ждёт мгновенный InspectionResult.
  */
@@ -286,9 +288,11 @@ export async function inspectImage(
   image: Blob | null,
   equipmentId: string,
   tick = 0,
+  options: { live?: boolean } = {},
 ): Promise<InspectionResult> {
   if (API_CONFIG.useMock) {
-    return copyJson(createMockInspection(tick, getMockEquipment(equipmentId)));
+    const createInspection = options.live ? createMockLiveInspection : createMockInspection;
+    return copyJson(createInspection(tick, getMockEquipment(equipmentId)));
   }
 
   if (!image) {

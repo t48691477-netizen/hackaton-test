@@ -5,6 +5,7 @@ import {
   MOCK_EQUIPMENT_LIST,
   MOCK_REPORTS,
   createMockInspection,
+  createMockLiveInspection,
   getEquipmentNode,
 } from './inspection';
 
@@ -48,6 +49,19 @@ describe('mock-слой inspection', () => {
     expect(MOCK_EQUIPMENT.specs.length).toBeGreaterThan(0);
     expect(MOCK_EQUIPMENT.nodes.length).toBeGreaterThan(0);
     expect(MOCK_EQUIPMENT.nodes[0].specs.length).toBeGreaterThan(0);
+  });
+
+  it('даёт прозрачный live-сценарий без накопления зон и без изменения фото/fixtures', () => {
+    const counts = Array.from({ length: 13 }, (_, index) => createMockLiveInspection(index + 1).defects.length);
+    expect(counts).toEqual([3, 3, 3, 2, 2, 1, 1, 0, 0, 1, 1, 1, 3]);
+    const first = createMockLiveInspection(1);
+    const returning = createMockLiveInspection(13);
+    expect(first.defects.map((defect) => defect.id)).toEqual(returning.defects.map((defect) => defect.id));
+    expect(first.meta.vision_mode).toBe('mock');
+    expect(createMockLiveInspection(8).summary).toMatch(/детекций нет/);
+    expect(createMockLiveInspection(8).llm.probable_cause).toMatch(/Диагноз не сформирован/);
+    expect(createMockInspection(8).defects).toHaveLength(3);
+    expect(MOCK_REPORTS.every((report) => report.result.defects.length === 1)).toBe(true);
   });
 
   it('связывает отчёты с паспортами оборудования из каталога', () => {

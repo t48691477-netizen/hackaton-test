@@ -189,6 +189,14 @@ describe('API-клиент: mock-режим', () => {
     expect(await api.fetchReports()).toEqual(MOCK_REPORTS);
   });
 
+  it('включает сценарий детекций только по явному live-флагу в mock', async () => {
+    const api = await import('./api');
+    expect((await api.inspectImage(null, MOCK_EQUIPMENT.id, 8, { live: true })).defects).toEqual([]);
+    expect((await api.inspectImage(null, MOCK_EQUIPMENT.id, 8, { live: false })).defects).toHaveLength(3);
+    expect((await api.inspectImage(null, MOCK_EQUIPMENT.id, 8)).defects).toHaveLength(3);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('анализирует выбранное оборудование и возвращает нормализованные bbox/polygon', async () => {
     const api = await import('./api');
     for (const equipment of MOCK_EQUIPMENT_LIST) {
@@ -262,7 +270,7 @@ describe('API-клиент: HTTP-контракт', () => {
   it('передаёт file и equipment_id в multipart для inspect', async () => {
     const api = await import('./api');
     const image = new Blob(['frame'], { type: 'image/jpeg' });
-    await api.inspectImage(image, MOCK_EQUIPMENT.id);
+    await api.inspectImage(image, MOCK_EQUIPMENT.id, 8, { live: true });
     const [url, init] = fetchMock.mock.calls[0];
     const form = init?.body as FormData;
 
@@ -270,6 +278,7 @@ describe('API-клиент: HTTP-контракт', () => {
     expect(init?.method).toBe('POST');
     expect(form.get('equipment_id')).toBe(MOCK_EQUIPMENT.id);
     expect(form.get('file')).toMatchObject({ name: 'frame.jpg', type: 'image/jpeg', size: image.size });
+    expect(Array.from(form.keys())).toEqual(['file', 'equipment_id']);
     expect(new Headers(init?.headers).has('Content-Type')).toBe(false);
   });
 
