@@ -1,0 +1,108 @@
+name: toir
+
+x-api-common: &api-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  init: true
+  expose:
+    - "8000"
+  environment:
+    GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash}
+    TOIR_DISABLE_DOCS: ${TOIR_DISABLE_DOCS:-true}
+    TOIR_CORS_ORIGINS: ${TOIR_CORS_ORIGINS:-}
+    TOIR_ACCESS_KEY_HASH: ${TOIR_ACCESS_KEY_HASH:?Set TOIR_ACCESS_KEY_HASH in .env}
+    TOIR_ACCOUNT_ID: ${TOIR_ACCOUNT_ID:-emp-001}
+    TOIR_FULL_NAME: ${TOIR_FULL_NAME:-Инженер ТОиР}
+    TOIR_EMAIL: ${TOIR_EMAIL:-engineer@example.com}
+    TOIR_ROLE: ${TOIR_ROLE:-engineer}
+    TOIR_DETECT_CONCURRENCY: ${TOIR_DETECT_CONCURRENCY:-1}
+    TOIR_DETECT_RATE_LIMIT: ${TOIR_DETECT_RATE_LIMIT:-30}
+    TOIR_DETECT_RATE_WINDOW_SECONDS: ${TOIR_DETECT_RATE_WINDOW_SECONDS:-60}
+    TOIR_INGRESS_RATE_LIMIT: ${TOIR_INGRESS_RATE_LIMIT:-120}
+    TOIR_INGRESS_RATE_WINDOW_SECONDS: ${TOIR_INGRESS_RATE_WINDOW_SECONDS:-60}
+    TOIR_TRUSTED_PROXY_IP: 172.30.0.3
+  volumes:
+    - api_data:/app/data
+    - model_weights:/app/weights
+    - uploaded_images:/app/static/uploads
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=1g,mode=1777
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  healthcheck:
+    test:
+      - CMD
+      - python
+      - -c
+      - from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=3).read()
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 90s
+  networks:
+    - private
+
+services:
+  api:
+    <<: *api-common
+    profiles: [cpu]
+
+  api-cuda:
+    <<: *api-common
+    profiles: [cuda]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PYTORCH_INDEX_URL: https://download.pytorch.org/whl/cu128
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles: [cpu, cuda]
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+      API_UPSTREAM: ${API_UPSTREAM:-api:8000}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+        required: false
+      api-cuda:
+        condition: service_healthy
+        required: false
+    networks:
+      private:
+        ipv4_address: 172.30.0.3
+
+networks:
+  private:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  api_data:
+  model_weights:
+  uploaded_images:
+  caddy_data:
+  caddy_config:

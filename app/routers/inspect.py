@@ -2,7 +2,8 @@ import shutil
 import time
 from datetime import datetime
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
+from app.routers.auth import require_scan
 from app.config import settings
 from app.schemas.inspection import InspectResponse
 from app.services.storage import storage_service
@@ -27,7 +28,8 @@ router = APIRouter(prefix="/api/inspect", tags=["Inspection & AI (Нейросе
 )
 async def inspect_equipment(
     file: UploadFile = File(..., description="Файл изображения (.jpg, .png, .webp) для детекции дефектов"),
-    equipment_id: str = Form(..., description="ID оборудования в системе ТОиР", examples=["pump_d1250_03"])
+    equipment_id: str = Form(..., description="ID оборудования в системе ТОиР", examples=["pump_d1250_03"]),
+    _account=Depends(require_scan),
 ):
     # Проверка расширения файла
     suffix = Path(file.filename or "image.jpg").suffix.lower()

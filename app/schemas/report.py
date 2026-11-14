@@ -31,3 +31,10 @@ class ReportResponse(BaseModel):
     expert_opinion: LLMRecommendation = Field(..., description="Рекомендации эксперта ТОиР")
     photo_url: str = Field(..., description="URL исходного фото осмотра")
     final_photo_url: Optional[str] = Field(None, description="URL итогового фото после ремонта")
+    started_at: Optional[str] = Field(None, description="Дата начала ремонта")
+    completed_at: Optional[str] = Field(None, description="Дата завершения ремонта")
+    updated_at: Optional[str] = Field(None, description="Дата последнего изменения")
+
+class ReportStatusUpdate(BaseModel):
+    status: RepairStatus = Field(..., description="Новый статус задачи")
+    dispatcher_notes: Optional[str] = Field(None, description="Заметки диспетчера")

@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import threading
+import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pathlib import Path
@@ -56,9 +57,16 @@ class StorageService:
                         defects_json TEXT NOT NULL,
                         expert_opinion_json TEXT NOT NULL,
                         photo_url TEXT NOT NULL,
-                        final_photo_url TEXT
+                        final_photo_url TEXT,
+                        started_at TEXT,
+                        completed_at TEXT,
+                        updated_at TEXT
                     )
                 """)
+                columns = {row[1] for row in cursor.execute("PRAGMA table_info(reports)")}
+                for column in ("started_at", "completed_at", "updated_at"):
+                    if column not in columns:
+                        cursor.execute(f"ALTER TABLE reports ADD COLUMN {column} TEXT")
                 conn.commit()
 
     def _seed_initial_data(self):
@@ -302,23 +310,28 @@ class StorageService:
         with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                report_id = f"act_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                now_str = datetime.now().isoformat()
+                now = datetime.now()
+                now_str = now.isoformat()
+                report_id = f"act_{now.strftime('%Y%m%d_%H%M%S_%f')}_{uuid.uuid4().hex[:8]}"
 
                 # Получаем имя оборудования
                 cursor.execute("SELECT name FROM equipment WHERE id = ?", (report_in.equipment_id,))
                 eq_row = cursor.fetchone()
-                eq_name = eq_row["name"] if eq_row else f"Агрегат {report_in.equipment_id}"
+                if eq_row is None:
+                    raise ValueError(f"Equipment '{report_in.equipment_id}' not found")
+                eq_name = eq_row["name"]
 
                 defects_json = json.dumps([d.model_dump() for d in report_in.defects], ensure_ascii=False)
                 expert_json = json.dumps(report_in.expert_opinion.model_dump(), ensure_ascii=False)
+                started_at = now_str if report_in.repair_status == RepairStatus.IN_PROGRESS else None
+                completed_at = now_str if report_in.repair_status == RepairStatus.COMPLETED else None
 
                 cursor.execute("""
                     INSERT INTO reports (
                         id, equipment_id, equipment_name, created_at, repair_status,
                         dispatcher_notes, defects_count, defects_json, expert_opinion_json,
-                        photo_url, final_photo_url
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        photo_url, final_photo_url, started_at, completed_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     report_id,
                     report_in.equipment_id,
@@ -330,7 +343,10 @@ class StorageService:
                     defects_json,
                     expert_json,
                     report_in.photo_url,
-                    report_in.final_photo_url
+                    report_in.final_photo_url,
+                    started_at,
+                    completed_at,
+                    now_str
                 ))
                 conn.commit()
 
@@ -345,8 +361,80 @@ class StorageService:
                     defects=report_in.defects,
                     expert_opinion=report_in.expert_opinion,
                     photo_url=report_in.photo_url,
-                    final_photo_url=report_in.final_photo_url
+                    final_photo_url=report_in.final_photo_url,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    updated_at=now_str
                 )
+
+    def get_report(self, report_id: str) -> Optional[ReportResponse]:
+        with self._lock:
+            with self._get_connection() as conn:
+                row = conn.execute("SELECT * FROM reports WHERE id = ?", (report_id,)).fetchone()
+                return self._report_from_row(row) if row else None
+
+    def update_report_status(
+        self, report_id: str, new_status: RepairStatus, dispatcher_notes: Optional[str] = None
+    ) -> Optional[ReportResponse]:
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                row = conn.execute("SELECT * FROM reports WHERE id = ?", (report_id,)).fetchone()
+                if row is None:
+                    return None
+
+                current = RepairStatus(row["repair_status"])
+                notes = row["dispatcher_notes"] if dispatcher_notes is None else dispatcher_notes
+                if new_status == current and notes == (row["dispatcher_notes"] or ""):
+                    return self._report_from_row(row)
+
+                allowed = {
+                    RepairStatus.PENDING: {RepairStatus.IN_PROGRESS, RepairStatus.REJECTED},
+                    RepairStatus.IN_PROGRESS: {RepairStatus.COMPLETED, RepairStatus.REJECTED},
+                    RepairStatus.COMPLETED: set(),
+                    RepairStatus.REJECTED: set(),
+                }
+                if new_status != current and new_status not in allowed[current]:
+                    conn.rollback()
+                    raise ValueError(f"Cannot transition report from {current.value} to {new_status.value}")
+
+                now_str = datetime.now().isoformat()
+                started_at = row["started_at"] or (now_str if new_status == RepairStatus.IN_PROGRESS else None)
+                completed_at = row["completed_at"] or (now_str if new_status == RepairStatus.COMPLETED else None)
+                conn.execute("""
+                    UPDATE reports SET repair_status = ?, dispatcher_notes = ?,
+                        started_at = ?, completed_at = ?, updated_at = ? WHERE id = ?
+                """, (
+                    new_status.value,
+                    row["dispatcher_notes"] if dispatcher_notes is None else dispatcher_notes,
+                    started_at,
+                    completed_at,
+                    now_str,
+                    report_id
+                ))
+                conn.commit()
+                return self._report_from_row(conn.execute(
+                    "SELECT * FROM reports WHERE id = ?", (report_id,)
+                ).fetchone())
+
+    @staticmethod
+    def _report_from_row(row: sqlite3.Row) -> ReportResponse:
+        return ReportResponse(
+            id=row["id"],
+            equipment_id=row["equipment_id"],
+            equipment_name=row["equipment_name"],
+            created_at=row["created_at"],
+            repair_status=RepairStatus(row["repair_status"]),
+            dispatcher_notes=row["dispatcher_notes"] or "",
+            defects_count=row["defects_count"],
+            defects=[DefectItem(**d) for d in json.loads(row["defects_json"])],
+            expert_opinion=LLMRecommendation(**json.loads(row["expert_opinion_json"])),
+            photo_url=row["photo_url"],
+            final_photo_url=row["final_photo_url"],
+            started_at=row["started_at"],
+            completed_at=row["completed_at"],
+            updated_at=row["updated_at"] or row["created_at"]
+        )
 
     def get_reports(
         self, 
@@ -373,21 +461,7 @@ class StorageService:
                 rows = cursor.fetchall()
                 results = []
                 for r in rows:
-                    defects = [DefectItem(**d) for d in json.loads(r["defects_json"])]
-                    expert = LLMRecommendation(**json.loads(r["expert_opinion_json"]))
-                    results.append(ReportResponse(
-                        id=r["id"],
-                        equipment_id=r["equipment_id"],
-                        equipment_name=r["equipment_name"],
-                        created_at=r["created_at"],
-                        repair_status=RepairStatus(r["repair_status"]),
-                        dispatcher_notes=r["dispatcher_notes"] or "",
-                        defects_count=r["defects_count"],
-                        defects=defects,
-                        expert_opinion=expert,
-                        photo_url=r["photo_url"],
-                        final_photo_url=r["final_photo_url"]
-                    ))
+                    results.append(self._report_from_row(r))
                 return results
 
 storage_service = StorageService(settings.DB_PATH)
