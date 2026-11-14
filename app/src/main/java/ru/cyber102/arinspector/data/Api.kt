@@ -4,6 +4,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.Response
 
 interface CyberApi {
 
@@ -16,12 +17,19 @@ interface CyberApi {
     @POST("api/reports")
     suspend fun report(@Body request: ReportRequest): ReportResponse
 
+    /** Загружает уже сформированный на устройстве PDF в object storage через backend. */
+    @POST("api/reports/{reportId}/document")
+    suspend fun uploadReportDocument(
+        @Path("reportId") reportId: String,
+        @Body request: DocumentUploadRequest
+    ): ObjectUploadResponse
+
     /** Ассистент «Моттэл»: разбор находок, запчасти, оформление акта. */
     @POST("api/chat")
     suspend fun chat(@Body request: ChatRequest): ChatResponse
 
     @GET("api/health")
-    suspend fun health(): HealthResponse
+    suspend fun health(): Response<HealthResponse>
 }
 
 object QrParser {

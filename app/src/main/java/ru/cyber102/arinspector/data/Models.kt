@@ -87,6 +87,9 @@ data class InspectResponse(
     val defects: List<Defect> = emptyList(),
     /** Общий инженерный вывод LLM по кадру. */
     val analysis: String? = null,
+    /** Persistent inspection identifier returned by a production backend. */
+    @SerializedName("inspection_id")
+    val inspectionId: String? = null,
     @SerializedName("inspected_at")
     val inspectedAt: String? = null,
     @SerializedName("model")
@@ -107,6 +110,8 @@ enum class ResolutionStatus(val apiValue: String, val label: String) {
 data class ReportRequest(
     @SerializedName("equipment_id")
     val equipmentId: String,
+    @SerializedName("inspection_id")
+    val inspectionId: String? = null,
     @SerializedName("node_id")
     val nodeId: String? = null,
     @SerializedName("defect_id")
@@ -116,7 +121,10 @@ data class ReportRequest(
     @SerializedName("defect_title")
     val defectTitle: String? = null,
     @SerializedName("created_at")
-    val createdAt: String? = null
+    val createdAt: String? = null,
+    /** Stable key for safe retry of a report request. */
+    @SerializedName("idempotency_key")
+    val idempotencyKey: String? = null
 )
 
 data class ReportResponse(
@@ -125,6 +133,25 @@ data class ReportResponse(
     val status: String = "",
     @SerializedName("created_at")
     val createdAt: String? = null
+)
+
+data class DocumentUploadRequest(
+    @SerializedName("file_base64")
+    val fileBase64: String,
+    @SerializedName("mime_type")
+    val mimeType: String = "application/pdf"
+)
+
+data class ObjectUploadResponse(
+    @SerializedName("report_id")
+    val reportId: String = "",
+    @SerializedName("object_key")
+    val objectKey: String = "",
+    @SerializedName("mime_type")
+    val mimeType: String = "",
+    @SerializedName("byte_size")
+    val byteSize: Long = 0,
+    val sha256: String = ""
 )
 
 /** Результат запроса + признак, что ответ собран локальным демо-источником. */
@@ -157,7 +184,17 @@ data class HealthResponse(
     /** "live" — реальная модель, "mock" — заранее подготовленные ответы. */
     val mode: String = "mock",
     val model: String? = null,
-    val time: String? = null
+    val time: String? = null,
+    /** "mock" or "production" backend profile. */
+    val profile: String? = null,
+    /** "memory" in demo and "postgresql" in production. */
+    val persistence: String? = null,
+    @SerializedName("object_storage")
+    val objectStorage: String? = null,
+    val database: String? = null,
+    val ai: String? = null
 ) {
     val isLive: Boolean get() = mode.equals("live", true)
+    val isDegraded: Boolean get() = status.equals("degraded", true)
+    val isOffline: Boolean get() = status.equals("offline", true)
 }

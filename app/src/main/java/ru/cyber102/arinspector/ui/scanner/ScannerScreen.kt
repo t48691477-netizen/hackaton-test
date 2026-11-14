@@ -86,6 +86,7 @@ import ru.cyber102.arinspector.ui.components.ThumbAction
 import ru.cyber102.arinspector.ui.components.ThumbSecondary
 import ru.cyber102.arinspector.ui.settings.SettingsSheet
 import ru.cyber102.arinspector.ui.theme.HudBlack
+import ru.cyber102.arinspector.ui.theme.HudAmber
 import ru.cyber102.arinspector.ui.theme.HudCyan
 import ru.cyber102.arinspector.ui.theme.HudGreen
 import ru.cyber102.arinspector.ui.theme.HudLine
@@ -206,10 +207,11 @@ fun ScannerScreen(
                     MonoLabel("кибер 102 · обслуживание оборудования")
                 }
                 Spacer(Modifier.weight(1f))
-                if (serverHealth?.isLive == true) {
-                    StatusPill("LIVE AI", HudGreen)
-                } else {
-                    StatusPill(
+                when {
+                    serverHealth?.isOffline == true -> StatusPill("OFFLINE", HudAmber)
+                    serverHealth?.isDegraded == true -> StatusPill("DEGRADED", HudAmber)
+                    serverHealth?.isLive == true -> StatusPill("LIVE AI", HudGreen)
+                    else -> StatusPill(
                         text = if (demoMode) "DEMO" else "LIVE",
                         color = if (demoMode) HudCyan else HudGreen
                     )

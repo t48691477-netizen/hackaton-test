@@ -68,9 +68,7 @@ class EquipmentRepository(
         if (settings.demoMode) {
             return@withContext Fetched(DemoData.equipment(id), fromDemo = true)
         }
-        runCatching { api().equipment(id) }
-            .map { Fetched(it, fromDemo = false) }
-            .getOrElse { Fetched(DemoData.equipment(id), fromDemo = true) }
+        Fetched(api().equipment(id), fromDemo = false)
     }
 
     suspend fun inspect(
@@ -87,9 +85,7 @@ class EquipmentRepository(
             imageBase64 = base64,
             screenAspect = screenAspect
         )
-        runCatching { api().inspect(request) }
-            .map { Fetched(it, fromDemo = false) }
-            .getOrElse { Fetched(DemoData.inspection(equipmentId), fromDemo = true) }
+        Fetched(api().inspect(request), fromDemo = false)
     }
 
     suspend fun report(request: ReportRequest): Fetched<ReportResponse> =
@@ -98,12 +94,33 @@ class EquipmentRepository(
                 delay(700)
                 return@withContext Fetched(mockReport(request), fromDemo = true)
             }
-            runCatching { api().report(request) }
-                .map { Fetched(it, fromDemo = false) }
-                .getOrElse {
-                    delay(350)
-                    Fetched(mockReport(request), fromDemo = true)
-                }
+            Fetched(api().report(request), fromDemo = false)
+        }
+
+    suspend fun uploadReportDocument(reportId: String, pdf: ByteArray): Fetched<ObjectUploadResponse> =
+        withContext(Dispatchers.IO) {
+            val encoded = Base64.encodeToString(pdf, Base64.NO_WRAP)
+            if (settings.demoMode) {
+                delay(250)
+                return@withContext Fetched(
+                    ObjectUploadResponse(
+                        reportId = reportId,
+                        objectKey = "demo/reports/$reportId/act.pdf",
+                        mimeType = "application/pdf",
+                        byteSize = pdf.size.toLong()
+                    ),
+                    fromDemo = true
+                )
+            }
+            // Do not fabricate a successful upload when production storage is
+            // unavailable: the caller still keeps the local PDF for sharing.
+            Fetched(
+                api().uploadReportDocument(
+                    reportId,
+                    DocumentUploadRequest(fileBase64 = encoded)
+                ),
+                fromDemo = false
+            )
         }
 
     /** Статус сервера: mock или live (реальная vision/LLM-модель на бэкенде). */
@@ -111,9 +128,21 @@ class EquipmentRepository(
         if (settings.demoMode) {
             return@withContext Fetched(HealthResponse("ok", "mock", "demo-data"), fromDemo = true)
         }
-        runCatching { api().health() }
-            .map { Fetched(it, fromDemo = false) }
-            .getOrElse { Fetched(HealthResponse("offline", "mock", null), fromDemo = true) }
+        try {
+            val response = api().health()
+            val health = response.body() ?: response.errorBody()?.use { errorBody ->
+                runCatching {
+                    gson.fromJson(errorBody.charStream(), HealthResponse::class.java)
+                }.getOrNull()
+            }
+            Fetched(
+                health?.takeIf { it.status.isNotBlank() }
+                    ?: HealthResponse("offline", "mock", null),
+                fromDemo = false
+            )
+        } catch (_: Exception) {
+            Fetched(HealthResponse("offline", "mock", null), fromDemo = false)
+        }
     }
 
     suspend fun chat(request: ChatRequest): Fetched<ChatResponse> = withContext(Dispatchers.IO) {
@@ -121,12 +150,7 @@ class EquipmentRepository(
             delay(550)
             return@withContext Fetched(ChatResponse(MottelScript.reply(request.message), "demo"), true)
         }
-        runCatching { api().chat(request) }
-            .map { Fetched(it, fromDemo = false) }
-            .getOrElse {
-                delay(300)
-                Fetched(ChatResponse(MottelScript.reply(request.message), "offline"), true)
-            }
+        Fetched(api().chat(request), fromDemo = false)
     }
 
     private fun mockReport(request: ReportRequest): ReportResponse {

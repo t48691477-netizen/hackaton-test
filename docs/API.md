@@ -29,6 +29,63 @@
 | `components[].offset_from_qr` | `{x,y,z}` | Смещение узла от QR-якоря, **метры**. Ось Y — вверх, Z — от плоскости QR к наблюдателю |
 | `components[].radius` | float | Радиус зоны узла, м. Дефект с `offset_from_qr` внутри радиуса привязывается к узлу |
 
+Поля `manufacturer`, `model`, `serial_number`, `specs` и `passport_components`
+могут присутствовать у оборудования с импортированным паспортом. `specs` и
+`passport_components` содержат подтверждённые текстовые характеристики, но не
+AR-геометрию. Они не добавляются в `components`: AR-узлом считается только
+запись из `equipment_nodes` с заданными `offset_from_qr` и `radius`.
+
+### 1.1 `GET /api/equipment`
+
+Возвращает каталог для ручного выбора оборудования:
+
+```json
+{
+  "equipment": [
+    { "id": "PUMP-402", "name": "Насосный агрегат ЦНС 38-220" },
+    { "id": "21031004-1", "name": "Насос AMS PCP60S12/3 №1" }
+  ]
+}
+```
+
+В production каталог читается из PostgreSQL. Для AMS ID ответа пока равен
+серийному номеру, пока для оборудования не утверждён отдельный `qr_id`.
+
+### 1.2 `GET /api/equipment/{id}/documents`
+
+Возвращает метаданные документов оборудования, не включая бинарные данные и
+локальный путь источника:
+
+```json
+{
+  "documents": [
+    {
+      "id": 1,
+      "file_name": "1) Насос №1 ПС.pdf",
+      "document_type": "passport",
+      "mime_type": "application/pdf",
+      "byte_size": 734003,
+      "sha256": "<64 lowercase hex characters>",
+      "imported_at": "2026-11-15T10:00:00Z",
+      "content_available": true
+    }
+  ]
+}
+```
+
+Для metadata-only записи `content_available` равно `false`, а размер,
+checksum и время импорта равны `null`. Неизвестное оборудование даёт `404`;
+сбой PostgreSQL в production даёт `503`.
+
+### 1.3 `GET /api/equipment/{id}/documents/{document_id}`
+
+Возвращает бинарное содержимое документа непосредственно из
+`promscan.equipment_documents.content` (`bytea`). Успешный ответ содержит
+`Content-Type`, `Content-Disposition`, `ETag` с SHA-256,
+`Cache-Control: private, no-store` и `X-Content-Type-Options: nosniff`.
+Документ без импортированного содержимого и неизвестный ID документа дают
+`404`. Этот маршрут не читает `source_path` и не обращается к Яндекс.Диску.
+
 ## 2. `POST /api/inspect`
 
 Кадр отправляется как JPEG → Base64 (без префикса `data:`).
@@ -65,10 +122,16 @@
     }
   ],
   "analysis": "Общий вывод по кадру",
+  "inspection_id": "8c4b7c1d-7c67-4e48-a4d0-6b4b1d8a9b2e",
   "inspected_at": "2026-11-13T10:42:00Z",
   "model": "vision-v1"
 }
 ```
+
+`inspection_id` возвращается production-backend после записи результата в
+PostgreSQL. В mock-профиле поле может отсутствовать. В production исходный
+JPEG сохраняется во внешнем S3-compatible object storage; PostgreSQL хранит
+только метаданные и ссылку на объект.
 
 Правила отображения:
 
@@ -88,7 +151,9 @@
   "defect_title": "Коррозия фланцевого соединения",
   "status": "parts_required",
   "comment": "Заказать прокладку, повторный осмотр в пятницу",
-  "created_at": "2026-11-13T10:44:12Z"
+  "created_at": "2026-11-13T10:44:12Z",
+  "inspection_id": "8c4b7c1d-7c67-4e48-a4d0-6b4b1d8a9b2e",
+  "idempotency_key": "8fc6d94f-2a55-4de6-8b8f-5c2a2b9b7a10"
 }
 ```
 
@@ -102,6 +167,10 @@
 
 `report_id` печатается в PDF-акте и в BottomSheet.
 
+`idempotency_key` необязателен в mock/demo. В production он рекомендуется для
+повторной отправки после сетевого сбоя: повтор с тем же ключом и тем же телом
+возвращает исходный акт, а повтор с другим телом получает `409`.
+
 ## 4. `GET /api/reports`
 
 ```json
@@ -111,13 +180,46 @@
 ## 5. `GET /api/health`
 
 ```json
-{ "status": "ok", "mode": "live", "model": "gpt-4o-mini", "time": "2026-11-13T10:42:00Z" }
+{
+  "status": "ok",
+  "mode": "live",
+  "profile": "production",
+  "persistence": "postgresql",
+  "database": "postgresql",
+  "object_storage": "s3",
+  "ai": "live",
+  "model": "gpt-4o-mini",
+  "time": "2026-11-13T10:42:00Z"
+}
 ```
 
 `mode`: `mock` | `live`. Приложение показывает `LIVE AI` при `live`,
 `DEMO` при `mock`. Подробнее — [`LIVE_AI.md`](LIVE_AI.md).
 
-## 6. `POST /api/chat` — ассистент «Моттэл»
+`profile`: `mock` | `production`. В production неизвестное оборудование
+возвращает `404`. Если PostgreSQL, S3-compatible storage или live AI не готовы,
+health отвечает `503` со статусом `degraded`; production API не подменяет
+данные демо-каталогом.
+
+## 6. `POST /api/reports/{report_id}/document`
+
+Загружает PDF, сформированный Android локально. Бинарное содержимое передаётся
+в Base64, а в PostgreSQL остаются только `object_key`, MIME-тип, размер,
+SHA-256 и связь с актом.
+
+```json
+{
+  "mime_type": "application/pdf",
+  "file_base64": "JVBERi0xLjQK..."
+}
+```
+
+В production принимается только PDF; при недоступном S3-compatible storage
+endpoint отвечает `503`. Повторная загрузка того же PDF идемпотентна, другой
+PDF для уже прикреплённого акта получает `409`. В mock-профиле endpoint
+отвечает `501`, чтобы не создавать ложное ощущение серверного хранения.
+
+## 7. `POST /api/chat` — ассистент «Моттэл»
 
 ```json
 {
@@ -138,6 +240,9 @@
 
 ## Поведение при недоступном бэкенде
 
-Приложение **никогда не падает** из-за сети: при ошибке/Live-режиме выключенном
-ответ собирается локально (`DemoData.kt`, `MottelScript.kt`), а в HUD появляется
-бейдж `DEMO`.
+При включённом Android **Демо-режиме** приложение использует локальные
+`DemoData.kt` и `MottelScript.kt`. При выключенном Демо-режиме сетевые ошибки не
+подменяются локальными данными: приложение показывает понятную ошибку, чтобы
+production не выдавал mock-результат как настоящий. PDF-паспорта оборудования
+хранятся в PostgreSQL `bytea`; бинарные фото осмотров и PDF-акты хранятся во
+внешнем S3-compatible object storage.

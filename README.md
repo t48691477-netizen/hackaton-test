@@ -79,6 +79,132 @@ python backend/server.py
 Без этих переменных сервер работает в `mock`-режиме — и это не ошибка, а страховка.
 Подробно: [`docs/LIVE_AI.md`](docs/LIVE_AI.md).
 
+### Production persistence
+
+Backend использует явный `APP_PROFILE=mock|production`. Значение по умолчанию
+`mock` сохраняет полностью автономное демо. Production не переключается на mock
+при ошибке конфигурации, PostgreSQL, object storage или live AI.
+
+```powershell
+python -m pip install -r backend/requirements.txt
+$env:APP_PROFILE = "production"
+$env:DATABASE_URL = "postgresql://<role>:<password>@<host>:5432/promscan"
+$env:OBJECT_STORAGE_ENDPOINT = "https://s3.example.internal"
+$env:OBJECT_STORAGE_BUCKET = "promscan-private"
+$env:OBJECT_STORAGE_ACCESS_KEY = "<access-key>"
+$env:OBJECT_STORAGE_SECRET_KEY = "<secret-key>"
+$env:LLM_BASE_URL = "https://api.example/v1"
+$env:LLM_API_KEY = "<server-only-key>"
+$env:LLM_MODEL = "<vision-model>"
+python backend/migrate.py
+python backend/server.py
+```
+
+Миграции запускаются отдельной командой выше либо при старте приложения с
+`DB_AUTO_MIGRATE=true`. Используйте отдельную миграционную роль, если роль API
+не должна иметь DDL-доступ. Health production отвечает `503`, пока обязательные
+PostgreSQL, S3-compatible storage или live AI не настроены/не готовы.
+Неизвестное оборудование возвращает `404`. Фото инспекций и PDF-акты хранятся
+во внешнем S3-compatible object storage. PDF-паспорта оборудования хранятся в
+`promscan.equipment_documents.content` (`bytea`) вместе с SHA-256, размером и
+временем импорта; runtime не загружает их с Яндекс.Диска и не использует
+`source_path` как URL. Подробности и фактический статус переноса:
+[`database/migrations/README.md`](database/migrations/README.md).
+
+### Импорт PDF-паспортов AMS
+
+Миграция `004_verified_pump_passports.sql` добавляет четыре записи оборудования
+с серийными номерами `21031004-1` … `21031004-4`, подтверждённые характеристики,
+компоненты паспорта и метаданные ожидаемых файлов. Это **не означает, что PDF уже
+загружены**: исходные файлы в текущем checkout/Downloads не найдены. Пустой
+`content` означает «ожидает импорта»; произвольные PDF не использовать.
+
+Положите ровно эти четыре исходных файла в отдельную локальную папку:
+
+```text
+1) Насос №1 ПС.pdf
+1) Насос №2 ПС.pdf
+1) Насос №3 ПС.pdf
+1) Насос №4 ПС.pdf
+```
+
+Затем на сервере с настроенным `DATABASE_URL`, установленными зависимостями и
+применёнными миграциями выполните:
+
+```powershell
+$env:APP_PROFILE = "production"
+python -m pip install -r backend/requirements.txt
+python backend/migrate.py
+python backend/import_passports.py "D:\\incoming\\pump-passports"
+```
+
+Импорт принимает только указанные имена, ровно четыре PDF, проверяет заголовок
+`%PDF-`, маркер `%%EOF`, ограничение `MAX_EQUIPMENT_PDF_BYTES` (по умолчанию
+25 MiB) и рассчитывает SHA-256. Все четыре строки оборудования/документов и
+серийные номера сверяются до одной транзакционной записи; повторный импорт
+идемпотентен. Если содержимое уже загруженного документа отличается, импорт
+остановится. `--replace` разрешает замену только после того, как оператор
+проверил источник:
+
+```powershell
+python backend/import_passports.py "D:\\incoming\\pump-passports" --replace
+```
+
+Проверка в PostgreSQL:
+
+```sql
+SELECT e.serial_number, d.file_name, d.byte_size,
+       encode(d.sha256, 'hex') AS sha256, d.imported_at,
+       d.content IS NOT NULL AS content_available
+FROM promscan.equipment_documents AS d
+JOIN promscan.equipment AS e ON e.id = d.equipment_id
+WHERE d.document_type = 'passport'
+ORDER BY e.serial_number;
+```
+
+До фактического импорта ожидаются 4 метаданные и 0 доступных документов;
+после успешного импорта — 4 доступных документа, ненулевые размеры, SHA-256
+длиной 64 hex-символа и `imported_at`. Список выдаёт
+`GET /api/equipment/{id}/documents`, бинарный PDF —
+`GET /api/equipment/{id}/documents/{document_id}`. Оба production endpoint читают
+только PostgreSQL; если байтов нет, скачивание вернёт `404`.
+
+### QR и параллельный backend в GitHub
+
+На момент проверки опубликованная ветка `origin/feat/android-backend` указывает
+на `bd90c69` (`feat(mobile): pick equipment from server list in manual dialog`,
+15.11.2026); `origin/backend-test` (`78b246f`) — отдельная TOiR/YOLO-реализация.
+Локальные ветки `backend`/`backend-feature` не имеют опубликованных удалённых
+веток. Обе опубликованные реализации существуют отдельно от этого PostgreSQL
+production профиля и не были слиты в него.
+
+- QR сканирует Android через ML Kit. `QrParser.extractEquipmentId()` берёт
+  последний сегмент URL до `?`, либо ищет текстовый ID. Серверный QR resolver,
+  QR registry и выпуск производственных кодов в этой backend-ветке не добавлены.
+- Ручной выбор в `feat/android-backend` загружает список из
+  `GET /front/api/equipment`; недавний коммит добавил список в диалог. Обычный
+  скан вызывает `GET /front/api/equipment/{id}`. Это не текущий контракт
+  `GET /api/equipment/{id}` и не его `{components: offset_from_qr, radius}` DTO.
+- Ветка построена вокруг другого FastAPI/SQLite хранилища, входа по access key,
+  web-панели и своего multipart API инспекций/актов. Не подключайте её DTO или
+  SQLite seed непосредственно к `promscan` без миграции и явного mapping.
+- `front/api/inspect` на неизвестный ID может подставить `_eq_fallback`, а
+  `inspect` — продолжить без найденного оборудования. В `APP_PROFILE=production`
+  текущего backend неизвестный ID должен завершаться `404`; mock-каталог остаётся
+  доступен только в mock-профиле.
+- Парсер мобильной ветки возвращает путь после последнего `/` буквально. Это
+  работает для `https://host/eq/pump-402?tab=info`, но не покрывает произвольные
+  URL-схемы/форматы payload и percent-encoding во всех случаях. QR должен
+  содержать утверждённый `qr_id` или alias из реестра, а не display name.
+- Паспортные AMS имеют серийные номера `21031004-1` … `21031004-4`, но
+  подтверждённых QR-ID для них нет. Их не следует добавлять к печатным QR или
+  назначать им существующие demo ID `PUMP-402`/`PUMP-118`/`VALVE-77`.
+
+Перед стыковкой выбрать один API как источник истины, согласовать auth для
+Android, mapping QR→equipment и форму AR-компонентов. Паспортные `equipment_components`
+содержат названия/характеристики, не координаты; в AR-ответ попадают только
+`equipment_nodes` с явно заданными `offset_from_qr` и `radius`.
+
 ## Ассистент «Моттэл»
 
 Инженерный ассистент прямо в приложении: разбор находок, список запчастей,
@@ -130,7 +256,10 @@ app/src/main/java/ru/cyber102/arinspector/
 ├── ui/components/           HUD-компоненты, Моттэл, кнопки большого пальца
 ├── ui/theme/                палитра и типографика
 └── util/                    кадр → JPEG, генератор PDF
-backend/server.py            API: mock + live (vision/LLM), /api/chat
+backend/server.py            API: mock/production, vision/LLM, /api/chat
+backend/db.py                PostgreSQL repository
+backend/object_storage.py    S3-compatible storage для фото/PDF
+database/migrations/         versioned schema и Android QR catalog
 demo/qr/                     готовые QR и лист для печати
 docs/                        API, live-режим, дизайн, демо, онбординг агентов
 ```
@@ -150,7 +279,10 @@ docs/                        API, live-режим, дизайн, демо, он�
 - По умолчанию бэкенд отдаёт заранее подготовленные дефекты (`mock`) — это
   демонстрация контракта и страховка на сцене. С `LLM_BASE_URL`/`LLM_API_KEY`
   он же ходит в реальную vision-модель; приложение при этом не меняется.
-- Если модель не ответила, сервер тихо падает обратно в `mock` — демо не ломается.
+- Ошибка live-модели в production возвращает `503`; подмена mock-ответом
+  запрещена. В mock-профиле сеть и модель не требуются.
 - Дефекты привязаны к экранным координатам кадра. При сильном смещении камеры
   оверлей нужно пересчитывать — для этого достаточно повторить сканирование.
 - PDF-акт формируется на устройстве, подпись — ручная (место под неё в документе есть).
+- В production акты и инспекции сохраняются в PostgreSQL; бинарные фото и PDF —
+  во внешнем object storage.

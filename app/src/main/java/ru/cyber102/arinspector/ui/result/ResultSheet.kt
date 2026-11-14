@@ -374,6 +374,7 @@ fun ResultSheet(
                                     comment = comment,
                                     reportId = report!!.reportId
                                 )
+                                vm.uploadReportDocument(report!!.reportId, file)
                                 PdfAct.share(context, file)
                             }
                         )

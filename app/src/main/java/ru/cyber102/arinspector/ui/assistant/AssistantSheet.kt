@@ -57,6 +57,7 @@ import ru.cyber102.arinspector.ui.components.MonoLabel
 import ru.cyber102.arinspector.ui.components.MottelBadge
 import ru.cyber102.arinspector.ui.components.StatusPill
 import ru.cyber102.arinspector.ui.theme.HudBlack
+import ru.cyber102.arinspector.ui.theme.HudAmber
 import ru.cyber102.arinspector.ui.theme.HudCyan
 import ru.cyber102.arinspector.ui.theme.HudGreen
 import ru.cyber102.arinspector.ui.theme.HudLine
@@ -122,9 +123,19 @@ fun AssistantSheet(
                 }
                 if (health != null) {
                     val live = health!!.isLive
+                    val degraded = health!!.isDegraded || health!!.isOffline
                     StatusPill(
-                        text = if (live) "LIVE AI" else "MOCK",
-                        color = if (live) HudGreen else HudCyan
+                        text = when {
+                            health!!.isOffline -> "OFFLINE"
+                            health!!.isDegraded -> "DEGRADED"
+                            live -> "LIVE AI"
+                            else -> "MOCK"
+                        },
+                        color = when {
+                            degraded -> HudAmber
+                            live -> HudGreen
+                            else -> HudCyan
+                        }
                     )
                 }
                 IconButton(onClick = onDismiss) {

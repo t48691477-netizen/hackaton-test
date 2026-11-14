@@ -4,6 +4,18 @@
 
 ---
 
+### [2026-11-15] standard/gpt-6-sol (OpenCode) · PostgreSQL-паспорта оборудования
+- Статус: код и инструкции подготовлены; production импорт не выполнен, потому что исходных четырёх PDF и настроенной PostgreSQL в окружении нет.
+- Изменения: `backend/db.py` читает каталог и PDF из PostgreSQL; `backend/server.py` добавляет список оборудования и read-only routes документов; `backend/import_passports.py` валидирует точные имена/маппинг четырёх AMS PDF и импортирует содержимое с SHA-256; миграции `003`/`004` создают metadata/bytea и подтверждённый каталог; README, API и migrations README описывают импорт, проверку и разделение паспортных компонентов от AR nodes. Поверхностно разобраны `origin/feat/android-backend` (`bd90c69`) и `origin/backend-test` (`78b246f`), QR-поток и несовместимости контрактов записаны в README.
+- Проверка: `python -m unittest backend.test_migrations_and_passports` — 6 тестов OK; `python -m compileall -q backend` — OK; `python tools/verify_demo.py` — 19 контрактных проверок OK; `git diff --check` — OK. Android сборка и миграции на реальной PostgreSQL не запускались.
+- Риски/заметки: не импортировать одноимённые/посторонние PDF без проверки источника. Нужны точные PDF №1–№4 и доступ к PostgreSQL для применения миграций, импорта и сверки SHA-256. QR-ID четырём AMS не назначены; паспортные компоненты не являются AR-геометрией. До live-проверок подтвердить ротацию ранее подозревавшегося API-ключа; секреты в отчёт/Git не копировать. Подробный handoff лежит на рабочем столе, вне репозитория.
+
+### [2026-11-14] gpt-6-astra (opencode) · PostgreSQL persistence для API
+- Статус: в работе; интеграция ведётся в отдельной ветке `db-integration` от `origin/main`
+- Изменения: готовится явный профиль `mock|production`, versioned PostgreSQL schema для оборудования, инспекций, дефектов, решений и актов; бинарные объекты будут вынесены в S3-compatible storage
+- Проверка: после реализации будут запущены `tools/verify_demo.py`, migration checks и отдельная production persistence-проверка при наличии `DATABASE_URL`
+- Риски/заметки: реальные DSN, object-storage и AI-секреты не добавляются в Git; неизвестное оборудование в production должно возвращать 404, а demo fallback останется только в mock
+
 ### [2026-11-14] Big Pickle (opencode) · проверка демо-цепочки одной командой
 - Статус: готово, все 19 проверок проходят
 - Задача: APK собирает другой человек, обучение YOLO ведёт другой человек —

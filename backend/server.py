@@ -34,6 +34,8 @@ Live-режим (любой OpenAI-совместимый провайдер):
 """
 
 import base64
+import binascii
+import hashlib
 import json
 import os
 import random
@@ -44,7 +46,32 @@ import time
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote, urlparse
+from html import escape
+from urllib.parse import quote, unquote, urlparse
+from urllib.request import Request, urlopen
+
+try:
+    from db import (
+        Database,
+        DatabaseError,
+        EquipmentRepository,
+        RepositoryConflict,
+        RepositoryNotFound,
+        request_hash,
+    )
+    from migrate import apply_migrations
+    from object_storage import ObjectStorageError, S3ObjectStorage
+except ImportError:  # importing as backend.server from a package in tests
+    from backend.db import (  # type: ignore
+        Database,
+        DatabaseError,
+        EquipmentRepository,
+        RepositoryConflict,
+        RepositoryNotFound,
+        request_hash,
+    )
+    from backend.migrate import apply_migrations  # type: ignore
+    from backend.object_storage import ObjectStorageError, S3ObjectStorage  # type: ignore
 
 # Консоль Windows часто в cp1251: без этого печать падала на любом символе.
 for _stream in (sys.stdout, sys.stderr):
@@ -56,11 +83,60 @@ for _stream in (sys.stdout, sys.stderr):
 STATE_LOCK = threading.Lock()
 REPORTS = []
 
+APP_PROFILE = (os.getenv("APP_PROFILE") or os.getenv("BACKEND_PROFILE") or "mock").strip().lower()
+if APP_PROFILE in ("prod", "production"):
+    APP_PROFILE = "production"
+elif APP_PROFILE in ("mock", "demo"):
+    APP_PROFILE = "mock"
+else:
+    raise ValueError("APP_PROFILE must be 'mock' or 'production'")
+PRODUCTION_MODE = APP_PROFILE == "production"
+DB_AUTO_MIGRATE = (os.getenv("DB_AUTO_MIGRATE") or "false").strip().lower() in (
+    "1", "true", "yes", "on"
+)
+DATABASE = None
+REPOSITORY = None
+OBJECT_STORAGE = S3ObjectStorage()
+PERSISTENCE_ERROR = None
+
 LLM_BASE_URL = (os.getenv("LLM_BASE_URL") or "").rstrip("/")
 LLM_API_KEY = os.getenv("LLM_API_KEY") or ""
 LLM_MODEL = os.getenv("LLM_MODEL") or "gpt-4o-mini"
 LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT") or 45)
 LIVE_MODE = bool(LLM_BASE_URL and LLM_API_KEY)
+
+REPORT_STATUSES = {"fixed_on_site", "parts_required", "false_positive"}
+MAX_IMAGE_BYTES = max(1, int(os.getenv("MAX_IMAGE_BYTES") or str(10 * 1024 * 1024)))
+MAX_DOCUMENT_BYTES = max(1, int(os.getenv("MAX_DOCUMENT_BYTES") or str(25 * 1024 * 1024)))
+MAX_REQUEST_BYTES = MAX_DOCUMENT_BYTES * 4 // 3 + 2 * 1024 * 1024
+REPORT_ID_RE = re.compile(r"ACT-\d{6}-[A-Z0-9]{4}")
+
+
+def configure_persistence():
+    """Initialize production persistence without touching mock startup."""
+    global DATABASE, REPOSITORY, PERSISTENCE_ERROR
+    if not PRODUCTION_MODE:
+        return True
+    try:
+        DATABASE = Database()
+        if DB_AUTO_MIGRATE:
+            apply_migrations(DATABASE)
+        REPOSITORY = EquipmentRepository(DATABASE)
+        DATABASE.check_schema()
+        PERSISTENCE_ERROR = None
+        return True
+    except DatabaseError as error:
+        if DATABASE is not None:
+            DATABASE.close()
+        DATABASE = None
+        REPOSITORY = None
+        PERSISTENCE_ERROR = str(error)
+        return False
+
+
+def persistence_error_payload():
+    # Never echo DSNs, passwords, object-storage keys or driver tracebacks.
+    return {"error": "persistent storage unavailable", "profile": APP_PROFILE}
 
 
 def now_iso():
@@ -242,10 +318,118 @@ MOTTEL_PROMPT = """Ты — Моттэл, инженер-ассистент пр
 
 
 def normalize_equipment_id(raw):
-    # QR часто содержит ссылку: пробелы и дефисы в ней приходят как %20 и %2D.
-    raw = unquote(raw or "")
-    match = re.search(r"([A-Z][A-Z0-9]{1,15}-\d{1,6})", raw.upper())
-    return match.group(1) if match else (raw.strip().upper()[:48])
+    if not isinstance(raw, str):
+        return ""
+    value = unquote(raw.strip())
+    if not value:
+        return ""
+    if "://" in value:
+        parts = [part for part in urlparse(value).path.split("/") if part]
+        value = parts[-1] if parts else ""
+    else:
+        value = value.split("?", 1)[0].strip()
+        if "/" in value:
+            value = value.rstrip("/").rsplit("/", 1)[-1]
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,47}", value):
+        return value.upper()
+    match = re.search(r"([A-Z][A-Z0-9]{1,15}-\d{1,6})", value.upper())
+    return match.group(1) if match else value.upper()[:48]
+
+
+def repository_equipment(equipment_id):
+    """Read the selected equipment from the active source of truth."""
+    if PRODUCTION_MODE:
+        if REPOSITORY is None:
+            raise DatabaseError("persistent storage is unavailable")
+        return REPOSITORY.get_equipment(equipment_id)
+    return EQUIPMENT.get(equipment_id)
+
+
+def decode_base64(value, max_bytes):
+    if not value:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("base64 payload must be a string")
+    if value.startswith("data:"):
+        raise ValueError("base64 payload must not contain a data URL prefix")
+    try:
+        data = base64.b64decode(value, validate=True)
+    except (ValueError, binascii.Error) as error:
+        raise ValueError("invalid base64 payload") from error
+    if len(data) > max_bytes:
+        raise ValueError("payload is too large")
+    return data
+
+
+def report_created_at(value):
+    if isinstance(value, datetime):
+        return value.isoformat().replace("+00:00", "Z")
+    return value
+
+
+def report_id_for_today():
+    return "ACT-" + datetime.now(timezone.utc).strftime("%y%m%d") + "-" + uuid.uuid4().hex[:4].upper()
+
+
+def ensure_production_ready():
+    if not PRODUCTION_MODE:
+        return True
+    if REPOSITORY is None:
+        return configure_persistence()
+    try:
+        DATABASE.check_schema()
+        return True
+    except DatabaseError:
+        return False
+
+
+def upload_object(data, mime_type, key):
+    if not data:
+        return None
+    if not OBJECT_STORAGE.configured:
+        raise ObjectStorageError("object storage is not configured")
+    return OBJECT_STORAGE.put_bytes(key, data, mime_type)
+
+
+def cleanup_uploaded_object(object_info):
+    """Remove an object that was uploaded before its DB transaction failed."""
+    if object_info:
+        OBJECT_STORAGE.delete(object_info["object_key"])
+
+
+def production_dependency_status():
+    """Check live production dependencies without exposing their credentials."""
+    if not PRODUCTION_MODE:
+        return None, None, None
+    database_ok = False
+    if ensure_production_ready():
+        database_ok = True
+    storage_ok = OBJECT_STORAGE.configured and OBJECT_STORAGE.check()
+    ai_ok = False
+    if LIVE_MODE:
+        try:
+            probe_timeout = max(0.5, min(float(os.getenv("LLM_HEALTH_TIMEOUT") or "3"), 10.0))
+            request = Request(
+                LLM_BASE_URL + "/models",
+                headers={"Authorization": "Bearer " + LLM_API_KEY},
+                method="GET",
+            )
+            with urlopen(request, timeout=probe_timeout) as response:
+                ai_ok = 200 <= response.status < 300
+        except Exception:
+            ai_ok = False
+    return database_ok, storage_ok, ai_ok
+
+
+def active_equipment_catalog():
+    if PRODUCTION_MODE:
+        if REPOSITORY is None:
+            return []
+        try:
+            return REPOSITORY.list_equipment()
+        except DatabaseError:
+            return []
+    return [{"id": key, "name": value["name"]} for key, value in EQUIPMENT.items()]
 
 
 # ---------------------------------------------------------------- LLM (live)
@@ -287,7 +471,9 @@ def extract_json(text):
 
 
 def live_inspect(equipment_id, image_b64, aspect):
-    equipment = EQUIPMENT.get(equipment_id) or EQUIPMENT["PUMP-402"]
+    equipment = repository_equipment(equipment_id)
+    if equipment is None:
+        raise RepositoryNotFound("equipment does not exist")
     components = ", ".join(f'{c["id"]}: {c["name"]}' for c in equipment["components"])
     prompt = INSPECT_PROMPT.format(equipment=equipment["name"], components=components)
     messages = [{
@@ -299,18 +485,30 @@ def live_inspect(equipment_id, image_b64, aspect):
     }]
     result = extract_json(call_llm(messages))
     defects = []
+    component_ids = {component["id"] for component in equipment["components"]}
     for index, item in enumerate(result.get("defects") or []):
         bbox = item.get("bbox") or [0.3, 0.3, 0.6, 0.6]
         if len(bbox) != 4 or any(not isinstance(v, (int, float)) for v in bbox):
             bbox = [0.3, 0.3, 0.6, 0.6]
         left, top, right, bottom = [min(max(float(v), 0.0), 1.0) for v in bbox]
+        left, right = sorted((left, right))
+        top, bottom = sorted((top, bottom))
+        if left == right or top == bottom:
+            left, top, right, bottom = 0.3, 0.3, 0.6, 0.6
+        confidence = min(max(float(item.get("confidence") or 0.75), 0.0), 1.0)
+        severity = (item.get("severity") or "medium").lower()
+        if severity not in {"low", "medium", "high", "critical"}:
+            severity = "medium"
+        node_id = item.get("node_id")
+        if node_id not in component_ids:
+            node_id = None
         defects.append({
             "id": item.get("id") or f"D-LIVE-{index + 1}",
-            "node_id": item.get("node_id"),
+            "node_id": node_id,
             "type": (item.get("type") or "rust").lower(),
             "title": item.get("title") or "Дефект",
-            "confidence": float(item.get("confidence") or 0.75),
-            "severity": (item.get("severity") or "medium").lower(),
+            "confidence": confidence,
+            "severity": severity,
             "bbox": [left, top, right, bottom],
             "polygon": [
                 {"x": left, "y": top}, {"x": right, "y": top},
@@ -334,7 +532,9 @@ def live_inspect(equipment_id, image_b64, aspect):
 
 
 def live_chat(message, equipment_id, history):
-    equipment = EQUIPMENT.get(equipment_id) or {}
+    equipment = repository_equipment(equipment_id) if equipment_id else {}
+    if equipment_id and equipment is None:
+        raise RepositoryNotFound("equipment does not exist")
     context = json.dumps({
         "id": equipment.get("id"),
         "name": equipment.get("name"),
@@ -398,7 +598,7 @@ class Handler(BaseHTTPRequestHandler):
         sys.stdout.write("[%s] %s\n" % (self.log_date_time_string(), fmt % args))
         sys.stdout.flush()
 
-    def _send(self, code, payload, content_type="application/json"):
+    def _send(self, code, payload, content_type="application/json", headers=None):
         if isinstance(payload, (dict, list)):
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         elif isinstance(payload, str):
@@ -406,11 +606,16 @@ class Handler(BaseHTTPRequestHandler):
         else:
             body = payload
         self.send_response(code)
-        self.send_header("Content-Type", content_type + "; charset=utf-8")
+        response_type = content_type
+        if content_type.startswith("text/") or content_type == "application/json":
+            response_type += "; charset=utf-8"
+        self.send_header("Content-Type", response_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -421,28 +626,122 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path.rstrip("/") or "/"
 
         if path == "/api/health":
-            return self._send(200, {
-                "status": "ok",
+            database_ok, storage_ok, ai_ok = production_dependency_status()
+            persistent_ok = database_ok and storage_ok and ai_ok if PRODUCTION_MODE else True
+            return self._send(200 if persistent_ok else 503, {
+                "status": "ok" if persistent_ok else "degraded",
                 "mode": "live" if LIVE_MODE else "mock",
+                "profile": APP_PROFILE,
+                "persistence": "postgresql" if PRODUCTION_MODE else "memory",
+                "database": (
+                    "postgresql" if database_ok else "unavailable"
+                ) if PRODUCTION_MODE else "not_required",
+                "object_storage": (
+                    "s3" if storage_ok else "unavailable"
+                ) if PRODUCTION_MODE else "not_required",
+                "ai": (
+                    "live" if ai_ok else "not_configured"
+                ) if PRODUCTION_MODE else ("live" if LIVE_MODE else "mock"),
                 "model": model_name(),
                 "time": now_iso(),
             })
 
         if path == "/api/reports":
+            if PRODUCTION_MODE:
+                if not ensure_production_ready():
+                    return self._send(503, persistence_error_payload())
+                try:
+                    return self._send(200, {"reports": REPOSITORY.list_reports()})
+                except DatabaseError:
+                    return self._send(503, persistence_error_payload())
             with STATE_LOCK:
-                return self._send(200, {"reports": list(REPORTS)})
+                reports = [
+                    {
+                        key: value
+                        for key, value in report.items()
+                        if key not in {"idempotency_key", "request_hash"}
+                    }
+                    for report in REPORTS
+                ]
+                return self._send(200, {"reports": reports})
+
+        if path == "/api/equipment":
+            if PRODUCTION_MODE:
+                if not ensure_production_ready():
+                    return self._send(503, persistence_error_payload())
+                try:
+                    return self._send(200, {"equipment": REPOSITORY.list_equipment()})
+                except DatabaseError:
+                    return self._send(503, persistence_error_payload())
+            return self._send(200, {"equipment": [
+                {"id": item["id"], "name": item["name"]} for item in EQUIPMENT.values()
+            ]})
+
+        match = re.fullmatch(r"/api/equipment/([^/]+)/documents/([^/]+)", path)
+        if match:
+            if not PRODUCTION_MODE:
+                return self._send(404, {"error": "equipment document not found"})
+            if not ensure_production_ready():
+                return self._send(503, persistence_error_payload())
+            equipment_id = normalize_equipment_id(unquote(match.group(1)))
+            document_id = unquote(match.group(2))
+            try:
+                document = REPOSITORY.get_equipment_document(equipment_id, document_id)
+            except RepositoryNotFound:
+                return self._send(404, {"error": "equipment not found", "equipment_id": equipment_id})
+            except DatabaseError:
+                return self._send(503, persistence_error_payload())
+            if document is None or document.get("content") is None:
+                return self._send(404, {"error": "equipment document not found"})
+            safe_name = quote(str(document["file_name"]), safe="")
+            return self._send(
+                200,
+                document["content"],
+                str(document.get("mime_type") or "application/pdf"),
+                {
+                    "Content-Disposition": f"attachment; filename=passport.pdf; filename*=UTF-8''{safe_name}",
+                    "X-Content-Type-Options": "nosniff",
+                    "Cache-Control": "private, no-store",
+                    "ETag": '"' + str(document.get("sha256") or "") + '"',
+                },
+            )
+
+        match = re.fullmatch(r"/api/equipment/([^/]+)/documents", path)
+        if match:
+            if not PRODUCTION_MODE:
+                return self._send(200, {"documents": []})
+            if not ensure_production_ready():
+                return self._send(503, persistence_error_payload())
+            equipment_id = normalize_equipment_id(unquote(match.group(1)))
+            try:
+                documents = REPOSITORY.list_equipment_documents(equipment_id)
+            except RepositoryNotFound:
+                return self._send(404, {"error": "equipment not found", "equipment_id": equipment_id})
+            except DatabaseError:
+                return self._send(503, persistence_error_payload())
+            return self._send(200, {"documents": documents})
 
         match = re.fullmatch(r"/api/equipment/([^/]+)", path)
         if match:
             equipment_id = normalize_equipment_id(match.group(1))
-            data = EQUIPMENT.get(equipment_id)
-            if data is None:
-                data = {
-                    "id": equipment_id,
-                    "name": f"Оборудование {equipment_id}",
-                    "location": "Зона не определена",
-                    "components": EQUIPMENT["PUMP-402"]["components"],
-                }
+            if PRODUCTION_MODE:
+                if not ensure_production_ready():
+                    return self._send(503, persistence_error_payload())
+                try:
+                    data = REPOSITORY.get_equipment(equipment_id)
+                except DatabaseError:
+                    return self._send(503, persistence_error_payload())
+                if data is None:
+                    return self._send(404, {"error": "equipment not found", "equipment_id": equipment_id})
+            else:
+                data = EQUIPMENT.get(equipment_id)
+                if data is None:
+                    data = {
+                        "id": equipment_id,
+                        "name": f"Оборудование {equipment_id}",
+                        "location": "Зона не определена",
+                        "components": EQUIPMENT["PUMP-402"]["components"],
+                    }
             time.sleep(0.35)
             return self._send(200, data)
 
@@ -457,7 +756,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path.rstrip("/")
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self._send(400, {"error": "invalid content length"})
+        if length < 0:
+            return self._send(400, {"error": "invalid content length"})
+        if length > MAX_REQUEST_BYTES:
+            return self._send(413, {"error": "request body is too large"})
         raw = self.rfile.read(length) if length else b"{}"
         try:
             body = json.loads(raw.decode("utf-8") or "{}")
@@ -471,38 +777,213 @@ class Handler(BaseHTTPRequestHandler):
             return self._chat(body)
 
         if path == "/api/reports":
-            with STATE_LOCK:
-                report_id = "ACT-" + datetime.now().strftime("%y%m%d") + "-" + uuid.uuid4().hex[:4].upper()
-                entry = {
-                    "report_id": report_id,
-                    "equipment_id": body.get("equipment_id"),
-                    "node_id": body.get("node_id"),
-                    "defect_id": body.get("defect_id"),
-                    "defect_title": body.get("defect_title"),
-                    "status": body.get("status"),
-                    "comment": body.get("comment"),
-                    "created_at": now_iso(),
-                }
-                REPORTS.append(entry)
-            time.sleep(0.5)
-            self.log_message("report saved: %s status=%s", report_id, entry["status"])
-            return self._send(200, {
-                "report_id": report_id,
-                "status": entry["status"],
-                "created_at": entry["created_at"],
-            })
+            return self._create_report(body)
+
+        match = re.fullmatch(r"/api/reports/([^/]+)/document", path)
+        if match:
+            return self._upload_report_document(unquote(match.group(1)), body)
 
         return self._send(404, {"error": "not found", "path": path})
 
+    def _create_report(self, body):
+        if not isinstance(body, dict):
+            return self._send(400, {"error": "request body must be a JSON object"})
+        equipment_id = normalize_equipment_id(body.get("equipment_id", ""))
+        status = str(body.get("status") or "")
+        if not equipment_id:
+            return self._send(400, {"error": "equipment_id is required"})
+        if status not in REPORT_STATUSES:
+            return self._send(400, {
+                "error": "invalid status",
+                "allowed": sorted(REPORT_STATUSES),
+            })
+        body = dict(body)
+        body["equipment_id"] = equipment_id
+        body["status"] = status
+        idempotency_key = (
+            str(body.get("idempotency_key") or self.headers.get("Idempotency-Key") or "").strip()
+        )
+        if len(idempotency_key) > 200:
+            return self._send(400, {"error": "Idempotency-Key is too long"})
+        if idempotency_key:
+            body["idempotency_key"] = idempotency_key
+
+        if PRODUCTION_MODE:
+            if not ensure_production_ready():
+                return self._send(503, persistence_error_payload())
+            try:
+                digest = request_hash(body)
+                existing = REPOSITORY.find_idempotent(idempotency_key)
+                if existing:
+                    if existing.get("request_hash") != digest:
+                        return self._send(409, {"error": "idempotency key was used for another request"})
+                    return self._send(200, {
+                        "report_id": existing["report_id"],
+                        "status": existing["resolution_status"],
+                        "created_at": report_created_at(existing.get("created_at")),
+                    })
+                result = REPOSITORY.create_report(
+                    body,
+                    report_id_for_today(),
+                    digest,
+                )
+                self.log_message("persistent report saved: %s status=%s", result["report_id"], status)
+                return self._send(200, result)
+            except RepositoryNotFound as error:
+                return self._send(404, {"error": str(error)})
+            except RepositoryConflict as error:
+                return self._send(409, {"error": str(error)})
+            except DatabaseError:
+                return self._send(503, persistence_error_payload())
+
+        with STATE_LOCK:
+            digest = request_hash(body)
+            if idempotency_key:
+                for existing in REPORTS:
+                    if existing.get("idempotency_key") == idempotency_key:
+                        if existing.get("request_hash") != digest:
+                            return self._send(409, {"error": "idempotency key was used for another request"})
+                        return self._send(200, {
+                            "report_id": existing["report_id"],
+                            "status": existing["status"],
+                            "created_at": existing["created_at"],
+                        })
+            report_id = report_id_for_today()
+            entry = {
+                "report_id": report_id,
+                "equipment_id": equipment_id,
+                "node_id": body.get("node_id"),
+                "defect_id": body.get("defect_id"),
+                "defect_title": body.get("defect_title"),
+                "status": status,
+                "comment": body.get("comment"),
+                "created_at": now_iso(),
+                "idempotency_key": idempotency_key or None,
+                "request_hash": digest,
+            }
+            REPORTS.append(entry)
+        time.sleep(0.5)
+        self.log_message("report saved: %s status=%s", report_id, status)
+        return self._send(200, {
+            "report_id": report_id,
+            "status": status,
+            "created_at": entry["created_at"],
+        })
+
+    def _upload_report_document(self, report_id, body):
+        if not PRODUCTION_MODE:
+            return self._send(501, {"error": "document upload requires production profile"})
+        if not ensure_production_ready():
+            return self._send(503, persistence_error_payload())
+        report_id = unquote(report_id)
+        if REPORT_ID_RE.fullmatch(report_id) is None:
+            return self._send(400, {"error": "invalid report_id"})
+        if not isinstance(body, dict):
+            return self._send(400, {"error": "request body must be a JSON object"})
+        mime_type = str(body.get("mime_type") or "application/pdf").lower().strip()
+        if mime_type != "application/pdf":
+            return self._send(400, {"error": "only application/pdf is accepted"})
+        try:
+            content = decode_base64(body.get("file_base64"), MAX_DOCUMENT_BYTES)
+        except ValueError as error:
+            return self._send(400, {"error": str(error)})
+        if not content:
+            return self._send(400, {"error": "file_base64 is required"})
+        if not (content.startswith(b"%PDF-") or content[:4] == b"%PDF"):
+            return self._send(400, {"error": "file is not a PDF"})
+        document_hash = hashlib.sha256(content).hexdigest()
+        object_info = None
+        try:
+            existing = REPOSITORY.get_report_document(report_id)
+            if existing is not None:
+                if existing["sha256"] != document_hash:
+                    return self._send(409, {"error": "report already has a different document"})
+                return self._send(200, existing)
+            object_info = upload_object(
+                content,
+                mime_type,
+                f"reports/{report_id}/{uuid.uuid4().hex}.pdf",
+            )
+            result = REPOSITORY.attach_report_document(report_id, object_info)
+            if result["object_key"] != object_info["object_key"]:
+                cleanup_uploaded_object(object_info)
+            return self._send(200, result)
+        except RepositoryNotFound:
+            cleanup_uploaded_object(object_info)
+            return self._send(404, {"error": "report not found"})
+        except RepositoryConflict as error:
+            cleanup_uploaded_object(object_info)
+            return self._send(409, {"error": str(error)})
+        except ObjectStorageError:
+            cleanup_uploaded_object(object_info)
+            return self._send(503, {"error": "object storage unavailable"})
+        except DatabaseError:
+            cleanup_uploaded_object(object_info)
+            return self._send(503, persistence_error_payload())
+
     # -- inspect
     def _inspect(self, body):
+        if not isinstance(body, dict):
+            return self._send(400, {"error": "request body must be a JSON object"})
         equipment_id = normalize_equipment_id(body.get("equipment_id", ""))
         image_b64 = body.get("image_base64")
+        if image_b64 is not None and not isinstance(image_b64, str):
+            return self._send(400, {"error": "image_base64 must be a string"})
         size_kb = round(len(image_b64) * 3 / 4 / 1024, 1) if image_b64 else 0
         self.log_message(
             "inspect: equipment=%s image=%s KB mode=%s",
             equipment_id, size_kb, "live" if LIVE_MODE else "mock",
         )
+
+        if PRODUCTION_MODE:
+            if not ensure_production_ready():
+                return self._send(503, persistence_error_payload())
+            try:
+                equipment = REPOSITORY.get_equipment(equipment_id)
+            except DatabaseError:
+                return self._send(503, persistence_error_payload())
+            if equipment is None:
+                return self._send(404, {"error": "equipment not found", "equipment_id": equipment_id})
+            if not LIVE_MODE:
+                return self._send(503, {"error": "vision service is not configured"})
+            try:
+                image_bytes = decode_base64(image_b64, MAX_IMAGE_BYTES)
+            except ValueError as error:
+                return self._send(400, {"error": str(error)})
+            if not image_bytes:
+                return self._send(400, {"error": "image_base64 is required in production"})
+            if not image_bytes.startswith(b"\xff\xd8"):
+                return self._send(400, {"error": "image must be a JPEG"})
+            started = time.time()
+            object_info = None
+            try:
+                payload = live_inspect(equipment_id, image_b64, body.get("screen_aspect"))
+                payload["inspected_at"] = now_iso()
+                object_info = upload_object(
+                    image_bytes,
+                    "image/jpeg",
+                    f"inspections/{equipment_id}/raw/{uuid.uuid4().hex}.jpg",
+                )
+                inspection_id = REPOSITORY.persist_inspection(equipment, payload, object_info)
+                payload["inspection_id"] = inspection_id
+                self.log_message(
+                    "persistent inspection %s: %s defects in %.1f s",
+                    inspection_id, len(payload["defects"]), time.time() - started,
+                )
+                return self._send(200, payload)
+            except RepositoryNotFound:
+                cleanup_uploaded_object(object_info)
+                return self._send(404, {"error": "equipment not found", "equipment_id": equipment_id})
+            except ObjectStorageError:
+                cleanup_uploaded_object(object_info)
+                return self._send(503, {"error": "object storage unavailable"})
+            except DatabaseError:
+                cleanup_uploaded_object(object_info)
+                return self._send(503, persistence_error_payload())
+            except Exception as error:
+                cleanup_uploaded_object(object_info)
+                self.log_message("LIVE FAILED in production: %s", error)
+                return self._send(503, {"error": "vision service unavailable"})
 
         if LIVE_MODE and image_b64:
             started = time.time()
@@ -527,11 +1008,36 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- chat (Моттэл)
     def _chat(self, body):
-        message = (body.get("message") or "").strip()
+        if not isinstance(body, dict):
+            return self._send(400, {"error": "request body must be a JSON object"})
+        message_value = body.get("message")
+        if message_value is not None and not isinstance(message_value, str):
+            return self._send(400, {"error": "message must be a string"})
+        message = (message_value or "").strip()
         if not message:
             return self._send(400, {"error": "empty message"})
         equipment_id = normalize_equipment_id(body.get("equipment_id", ""))
-        self.log_message("chat: equipment=%s msg=%s", equipment_id, message[:80])
+        self.log_message("chat: equipment=%s chars=%s", equipment_id, len(message))
+
+        if PRODUCTION_MODE:
+            if not ensure_production_ready():
+                return self._send(503, persistence_error_payload())
+            if equipment_id:
+                try:
+                    if REPOSITORY.get_equipment(equipment_id) is None:
+                        return self._send(404, {"error": "equipment not found", "equipment_id": equipment_id})
+                except DatabaseError:
+                    return self._send(503, persistence_error_payload())
+            if not LIVE_MODE:
+                return self._send(503, {"error": "assistant service is not configured"})
+            try:
+                answer = live_chat(message, equipment_id, body.get("history"))
+                return self._send(200, {"reply": answer, "model": LLM_MODEL})
+            except RepositoryNotFound:
+                return self._send(404, {"error": "equipment not found", "equipment_id": equipment_id})
+            except Exception as error:
+                self.log_message("chat failed in production (%s)", type(error).__name__)
+                return self._send(503, {"error": "assistant service unavailable"})
 
         if LIVE_MODE:
             try:
@@ -547,9 +1053,11 @@ class Handler(BaseHTTPRequestHandler):
 def qr_page(equipment_id):
     """Страница с QR: открывается на ноутбуке, сканируется телефоном."""
     equipment_id = normalize_equipment_id(equipment_id)
+    safe_equipment_id = escape(equipment_id)
+    js_equipment_id = json.dumps(equipment_id, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e")
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
-<title>QR · {equipment_id}</title>
+<title>QR · {safe_equipment_id}</title>
 <style>
   body {{ margin:0; min-height:100vh; display:grid; place-items:center;
          background:#070a0c; color:#eaf2f5;
@@ -564,14 +1072,14 @@ def qr_page(equipment_id):
 <body>
 <div class="card">
   <div class="t">AR · ИНСПЕКТОР — КИБЕР 102</div>
-  <img id="qr" alt="QR {equipment_id}">
-  <div class="id">{equipment_id}</div>
+  <img id="qr" alt="QR {safe_equipment_id}">
+  <div class="id">{safe_equipment_id}</div>
   <div class="h">наведите камеру приложения на этот код</div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
   new QRCode(document.getElementById('qr'), {{
-    text: '{equipment_id}', width: 320, height: 320,
+     text: {js_equipment_id}, width: 320, height: 320,
     colorDark: '#070a0c', colorLight: '#ffffff',
     correctLevel: QRCode.CorrectLevel.H
   }});
@@ -580,10 +1088,13 @@ def qr_page(equipment_id):
 
 
 def index_page():
+    catalog = active_equipment_catalog()
     ids = "".join(
-        f'<li><a href="/qr/{i}">{i}</a> — {EQUIPMENT[i]["name"]}</li>' for i in EQUIPMENT
+        f'<li><a href="/qr/{escape(str(item["id"]))}">{escape(str(item["id"]))}</a> — '
+        f'{escape(str(item["name"]))}</li>'
+        for item in catalog
     )
-    mode = "LIVE · " + LLM_MODEL if LIVE_MODE else "MOCK"
+    mode = ("LIVE · " + LLM_MODEL if LIVE_MODE else "MOCK") + " · " + APP_PROFILE
     return f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <title>AR-Инспектор · API</title>
 <style>
@@ -607,9 +1118,15 @@ GET  /api/reports</pre>
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
+    if PRODUCTION_MODE:
+        if configure_persistence():
+            print("  PostgreSQL: connected")
+        else:
+            print("  PostgreSQL: unavailable (API will return 503; no mock fallback)")
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print("=" * 62)
     print("  AR-ИНСПЕКТОР · API")
+    print(f"  профиль: {APP_PROFILE}")
     print(f"  режим: {'LIVE · ' + LLM_MODEL if LIVE_MODE else 'MOCK (без сети и ключей)'}")
     print(f"  http://localhost:{port}/            (QR-страницы для демо)")
     print(f"  http://localhost:{port}/api/health  (проверка)")
@@ -620,6 +1137,9 @@ def main():
     except KeyboardInterrupt:
         print("\nостановлено")
         server.shutdown()
+    finally:
+        if DATABASE is not None:
+            DATABASE.close()
 
 
 if __name__ == "__main__":

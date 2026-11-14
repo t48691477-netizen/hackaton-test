@@ -38,6 +38,7 @@ import ru.cyber102.arinspector.ui.components.PrimaryAction
 import ru.cyber102.arinspector.ui.components.SectionTitle
 import ru.cyber102.arinspector.ui.components.StatusPill
 import ru.cyber102.arinspector.ui.theme.HudBlack
+import ru.cyber102.arinspector.ui.theme.HudAmber
 import ru.cyber102.arinspector.ui.theme.HudCyan
 import ru.cyber102.arinspector.ui.theme.HudGreen
 import ru.cyber102.arinspector.ui.theme.HudLine
@@ -147,12 +148,14 @@ fun SettingsSheet(vm: InspectionViewModel, onDismiss: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     StatusPill(
                         text = when {
-                            health?.status == "offline" -> "OFFLINE"
+                            health?.isOffline == true -> "OFFLINE"
+                            health?.isDegraded == true -> "DEGRADED"
                             health?.isLive == true -> "LIVE AI"
                             else -> "MOCK"
                         },
                         color = when {
-                            health?.status == "offline" -> HudCyan
+                            health?.isOffline == true -> HudAmber
+                            health?.isDegraded == true -> HudAmber
                             health?.isLive == true -> HudGreen
                             else -> HudCyan
                         }
@@ -166,10 +169,17 @@ fun SettingsSheet(vm: InspectionViewModel, onDismiss: () -> Unit) {
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = if (health?.isLive == true) {
+                    text = when {
+                        health?.isOffline == true -> {
+                            "Сервер недоступен. Проверьте адрес и соединение."
+                        }
+                        health?.isDegraded == true -> {
+                            "Production-сервер не готов: проверьте PostgreSQL, object storage и AI."
+                        }
+                        health?.isLive == true -> {
                         "Сервер подключён к реальной модели: кадры уходят в vision, разбор пишет LLM."
-                    } else {
-                        "Сервер в демо-режиме: заранее подготовленные дефекты. Всё честно."
+                        }
+                        else -> "Сервер в демо-режиме: заранее подготовленные дефекты. Всё честно."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted
