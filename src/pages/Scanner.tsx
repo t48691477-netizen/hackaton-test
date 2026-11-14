@@ -8,6 +8,7 @@ import {
   Copy,
   Crosshair,
   ExternalLink,
+  FileSearch,
   Gauge,
   Info,
   Loader2,
@@ -22,7 +23,12 @@ import {
   Wrench,
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
-import { API_CONFIG, createReport, inspectImage } from '../lib/api';
+import {
+  API_CONFIG,
+  createReport,
+  inspectImage,
+  requestDetailedAnalysis,
+} from '../lib/api';
 import {
   EMPLOYEES_CHANGED_EVENT,
   getEngineers,
@@ -32,6 +38,7 @@ import {
 import {
   getEquipmentNode,
   type Defect,
+  type DetailedAnalysisResult,
   type EquipmentNode,
   type InspectionResult,
   type Report,
@@ -127,6 +134,12 @@ const DATE_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
 function formatDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : DATE_FORMATTER.format(date);
+}
+
+function formatConditionProbability(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${Math.round(value * 100)}%`
+    : 'Нет данных';
 }
 
 function describeCameraError(error: unknown): string {
@@ -651,12 +664,65 @@ function ReportCreateForm({
   );
 }
 
+function DetailedAnalysisView({ result }: { result: DetailedAnalysisResult }) {
+  return (
+    <div className="mt-4 border border-line bg-raised p-4" aria-live="polite">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-ink">Подробный анализ</h3>
+        <span className="font-mono text-[10px] text-muted">{result.processing_ms} мс</span>
+      </div>
+      <p className="mt-1 break-all font-mono text-[10px] leading-4 text-faint">
+        Осмотр {result.inspection_id}
+      </p>
+      <p className="mt-2 text-sm leading-6 text-soft">{result.summary}</p>
+      {result.findings.length > 0 ? (
+        <ul className="mt-4 divide-y divide-line border-y border-line">
+          {result.findings.map((finding, index) => (
+            <li key={`${finding.title}-${index}`} className="py-3">
+              <div className="flex items-start justify-between gap-3">
+                <h4 className="text-sm font-semibold text-ink">{finding.title}</h4>
+                <span className={`shrink-0 text-xs ${SEVERITY_META[finding.severity].text}`}>
+                  {SEVERITY_META[finding.severity].label}
+                </span>
+              </div>
+              <p className="mt-1 text-xs leading-5 text-muted">{finding.description}</p>
+              <p className="mt-2 text-xs leading-5 text-soft">{finding.recommendation}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {result.probable_causes.length > 0 ? (
+        <div className="mt-4">
+          <h4 className="technical">Вероятные причины</h4>
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-soft">
+            {result.probable_causes.map((cause) => <li key={cause}>{cause}</li>)}
+          </ul>
+        </div>
+      ) : null}
+      {result.recommendation_steps.length > 0 ? (
+        <div className="mt-4">
+          <h4 className="technical">Рекомендуемые действия</h4>
+          <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-5 text-soft">
+            {result.recommendation_steps.map((step, index) => (
+              <li key={`${index}-${step}`}>{step}</li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+      <p className="mt-4 break-words font-mono text-[10px] leading-4 text-faint">
+        Модели: {result.models.join(', ') || 'не указаны'}
+      </p>
+    </div>
+  );
+}
+
 interface LiveReportProps {
   analysis: InspectionResult;
   activeDefect: Defect | null;
   activeNode: EquipmentNode | null;
   selectedId: string | null;
   snapshotPhoto: Blob | null;
+  analysisPhoto: Blob | null;
   engineers: Employee[];
   onHover: (id: string | null) => void;
   onFocus: (id: string | null) => void;
@@ -669,17 +735,68 @@ function LiveReport({
   activeNode,
   selectedId,
   snapshotPhoto,
+  analysisPhoto,
   engineers,
   onHover,
   onFocus,
   onSelect,
 }: LiveReportProps) {
   const [reportResult, setReportResult] = useState<InspectionResult | null>(null);
+  const [detailedState, setDetailedState] = useState<{
+    inspectionId: string;
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    result?: DetailedAnalysisResult;
+    message?: string;
+  }>({ inspectionId: analysis.inspection_id, status: 'idle' });
+  const detailedRequestIdRef = useRef(0);
   const reportButtonRef = useRef<HTMLButtonElement>(null);
   const activeMeta = activeDefect
     ? SEVERITY_META[activeDefect.severity]
     : null;
   const mockSpecs = API_CONFIG.useMock || analysis.meta.vision_mode === 'mock';
+
+  useEffect(() => () => {
+    detailedRequestIdRef.current += 1;
+  }, []);
+
+  const handleDetailedAnalysis = async () => {
+    if (
+      !analysisPhoto ||
+      (detailedState.inspectionId === analysis.inspection_id && detailedState.status === 'loading')
+    ) return;
+
+    const requestId = ++detailedRequestIdRef.current;
+    const inspectionId = analysis.inspection_id;
+    setDetailedState({ inspectionId, status: 'loading' });
+
+    try {
+      const result = await requestDetailedAnalysis({
+        image: analysisPhoto,
+        inspection: analysis,
+        conditionParameters: analysis.condition_parameters,
+      });
+      if (result.inspection_id !== inspectionId) {
+        throw new Error('Backend вернул подробный анализ для другого осмотра.');
+      }
+      if (requestId === detailedRequestIdRef.current) {
+        setDetailedState({ inspectionId, status: 'ready', result });
+      }
+    } catch (requestError) {
+      if (requestId === detailedRequestIdRef.current) {
+        setDetailedState({
+          inspectionId,
+          status: 'error',
+          message: requestError instanceof Error
+            ? requestError.message
+            : 'Не удалось получить подробный анализ.',
+        });
+      }
+    }
+  };
+
+  const visibleDetailedState = detailedState.inspectionId === analysis.inspection_id
+    ? detailedState
+    : { inspectionId: analysis.inspection_id, status: 'idle' as const };
 
   return (
     <div className="animate-fade-in border border-line bg-panel">
@@ -710,6 +827,57 @@ function LiveReport({
             {analysis.summary}
           </p>
         </div>
+
+        <section className="mt-5 border-y border-line py-4" aria-labelledby="condition-parameters-heading">
+          <h3 id="condition-parameters-heading" className="technical">Параметры realtime</h3>
+          <dl className="mt-2 divide-y divide-line">
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-xs text-soft">Утечка масла</dt>
+              <dd className="font-mono text-xs tabular text-ink">
+                {formatConditionProbability(analysis.condition_parameters?.oil_leak_probability)}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-xs text-soft">Ржавчина</dt>
+              <dd className="font-mono text-xs tabular text-ink">
+                {formatConditionProbability(analysis.condition_parameters?.rust_probability)}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-xs text-soft">Плохой сварной шов</dt>
+              <dd className="font-mono text-xs tabular text-ink">
+                {formatConditionProbability(analysis.condition_parameters?.poor_weld_probability)}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="mt-5" aria-label="Подробный анализ дефектов">
+          <button
+            type="button"
+            className="btn-primary w-full"
+            onClick={() => void handleDetailedAnalysis()}
+            disabled={!analysisPhoto || visibleDetailedState.status === 'loading'}
+          >
+            {visibleDetailedState.status === 'loading'
+              ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              : <FileSearch className="h-4 w-4" aria-hidden="true" />}
+            {visibleDetailedState.status === 'loading' ? 'Запрашиваем анализ…' : 'более точный отчет'}
+          </button>
+          {!analysisPhoto ? (
+            <p className="mt-2 text-xs leading-5 text-muted">
+              Ожидается кадр, использованный для последнего realtime-результата.
+            </p>
+          ) : null}
+          {visibleDetailedState.status === 'error' ? (
+            <p className="mt-2 text-xs leading-5 text-danger" role="alert">
+              {visibleDetailedState.message}
+            </p>
+          ) : null}
+          {visibleDetailedState.status === 'ready' && visibleDetailedState.result ? (
+            <DetailedAnalysisView result={visibleDetailedState.result} />
+          ) : null}
+        </section>
 
         <section
           id="equipment-specs-panel"
@@ -1160,6 +1328,7 @@ export function Scanner() {
   const requestIdRef = useRef(0);
   const tickRef = useRef(0);
   const imageBlobRef = useRef<Blob | null>(null);
+  const [analysisImage, setAnalysisImage] = useState<Blob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [status, setStatus] = useState<ScannerStatus>('starting');
@@ -1216,6 +1385,7 @@ export function Scanner() {
       setError(null);
       setSnapshot(null);
       setAnalysis(null);
+      setAnalysisImage(null);
       setHoveredDefectId(null);
       setFocusedDefectId(null);
       setSelectedDefectId(null);
@@ -1348,7 +1518,7 @@ export function Scanner() {
       const tick = tickRef.current;
 
       try {
-        const frame = API_CONFIG.useMock ? null : await captureFrame();
+        const frame = await captureFrame();
 
         if (cancelled) {
           return;
@@ -1362,6 +1532,7 @@ export function Scanner() {
         const result = await inspectImage(frame, 'pump-cns-38-220', tick);
 
         if (!cancelled) {
+          setAnalysisImage(frame ?? imageBlobRef.current);
           setAnalysis(result);
           setLiveError(null);
         }
@@ -1421,6 +1592,7 @@ export function Scanner() {
   const handleReset = useCallback(() => {
     setSnapshot(null);
     setAnalysis(null);
+    setAnalysisImage(null);
     setHoveredDefectId(null);
     setFocusedDefectId(null);
     setSelectedDefectId(null);
@@ -1469,6 +1641,7 @@ export function Scanner() {
           stopStream();
           tickRef.current = 0;
           imageBlobRef.current = file;
+          setAnalysisImage(null);
           setSnapshot({
             src,
             width: image.naturalWidth || 1280,
@@ -1725,6 +1898,7 @@ export function Scanner() {
               activeNode={activeNode}
               selectedId={selectedDefectId}
               snapshotPhoto={snapshot ? imageBlobRef.current : null}
+              analysisPhoto={analysisImage}
               engineers={engineers}
               onHover={setHoveredDefectId}
               onFocus={setFocusedDefectId}

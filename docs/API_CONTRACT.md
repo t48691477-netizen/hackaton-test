@@ -219,6 +219,11 @@ InvitationStatus = not_sent | queued | sent | failed
   "inspection_id": "insp-20261113-0001",
   "equipment": { "...": "EquipmentDetail" },
   "defects": [{ "...": "Defect" }],
+  "condition_parameters": {
+    "oil_leak_probability": null,
+    "rust_probability": null,
+    "poor_weld_probability": null
+  },
   "llm": {
     "criticality": "high",
     "probable_cause": "Усталостная трещина из-за вибрации.",
@@ -247,6 +252,22 @@ UTC-время. `vision_mode` и `llm_mode` независимо отражаю�
 При недоступных ресурсах или невалидном ответе LLM в real-режиме — понятная
 ошибка `503` и лог без секретов. Если отдельно согласован fallback, его
 нельзя скрывать: соответствующий режим в `meta` должен быть `mock`.
+
+### ConditionParameters
+
+Целевые вероятности классов для realtime-отчёта и детального запроса:
+
+```json
+{
+  "oil_leak_probability": null,
+  "rust_probability": 0.91,
+  "poor_weld_probability": null
+}
+```
+
+Каждое поле — число `0..1` или `null`, если соответствующая модель не
+подключена/не вернула оценку. Не выводить вероятность из `label`, сводки или
+координат другого класса.
 
 ### EmployeeRef
 
@@ -406,6 +427,48 @@ Backend:
 Ответ `200`: `InspectionResult`; `404` — нет оборудования; `422` — ошибка
 входных данных; `503` — запрошенный real-сервис недоступен. Повторные вызовы
 frontend по таймеру — отдельные осмотры, не серверный поток/WebSocket.
+
+### POST `/api/inspect/detailed` (предложение, backend ещё не реализован)
+
+Кнопка «более точный отчет» отправляет кадр соответствующего осмотра,
+`InspectionResult` и его `condition_parameters` дополнительным моделям.
+Endpoint предлагается для реализации backend-агенту и не считается
+существующим до серверной реализации.
+
+`multipart/form-data`:
+
+- `file` — исходный кадр данного осмотра (JPEG/PNG/WebP), обязательно;
+- `inspection` — JSON-строка с полным `InspectionResult`;
+- `condition_parameters` — JSON-строка параметров из того же результата.
+
+Backend сам выбирает модели и формирует вывод; не доверяет клиентским
+идентификаторам моделей, промптам, критичности или готовому диагнозу.
+Ответ `200`:
+
+```json
+{
+  "analysis_id": "detail-20261114-0001",
+  "inspection_id": "insp-20261114-0001",
+  "summary": "Подробная сводка по осмотру.",
+  "findings": [{
+    "title": "Следы масла",
+    "description": "Наблюдение по кадру.",
+    "severity": "medium",
+    "recommendation": "Проверить уплотнение после остановки агрегата."
+  }],
+  "probable_causes": ["Износ уплотнения"],
+  "recommendation_steps": ["Проверить уплотнение специалистом."],
+  "models": ["server-selected-model-a", "server-selected-model-b"],
+  "processing_ms": 1280,
+  "analyzed_at": "2026-11-14T18:30:00Z"
+}
+```
+
+`severity`: `low | medium | high`. Списки могут быть пустыми, но без пустых
+строк. Ответ обязан вернуть тот же `inspection_id`. `processing_ms` и
+`analyzed_at` задаются сервером. Ошибки: `404` — осмотр не найден, `422` —
+невалидный multipart/JSON, `503` — обязательная модель недоступна. В mock-
+режиме frontend не симулирует endpoint и показывает, что backend не подключён.
 
 ### POST `/api/reports`
 

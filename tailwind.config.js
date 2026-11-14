@@ -25,7 +25,8 @@ export default {
       },
       fontFamily: {
         sans: [
-          'IBM Plex Sans',
+          'Nunito Sans Variable',
+          'Nunito Sans',
           'Segoe UI',
           'system-ui',
           '-apple-system',
@@ -36,11 +37,11 @@ export default {
       },
       borderRadius: {
         none: '0',
-        sm: '1px',
-        DEFAULT: '2px',
-        md: '2px',
-        lg: '4px',
-        xl: '6px',
+        sm: '4px',
+        DEFAULT: '5px',
+        md: '6px',
+        lg: '8px',
+        xl: '10px',
         full: '9999px',
       },
       boxShadow: {

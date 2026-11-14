@@ -273,6 +273,33 @@ describe('API-клиент: HTTP-контракт', () => {
     expect(new Headers(init?.headers).has('Content-Type')).toBe(false);
   });
 
+  it('передаёт кадр, realtime-параметры и исходный осмотр для подробного анализа', async () => {
+    const api = await import('./api');
+    const image = new Blob(['frame'], { type: 'image/jpeg' });
+    const inspection = createMockInspection(7);
+
+    await api.requestDetailedAnalysis({
+      image,
+      inspection,
+      conditionParameters: inspection.condition_parameters,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    const form = init?.body as FormData;
+    expect(url).toBe('https://api.example/api/inspect/detailed');
+    expect(init?.method).toBe('POST');
+    expect(form.get('file')).toMatchObject({
+      name: 'frame.jpg',
+      type: 'image/jpeg',
+      size: image.size,
+    });
+    expect(JSON.parse(form.get('inspection') as string)).toEqual(inspection);
+    expect(JSON.parse(form.get('condition_parameters') as string)).toEqual(
+      inspection.condition_parameters,
+    );
+    expect(new Headers(init?.headers).has('Content-Type')).toBe(false);
+  });
+
   it('не отправляет inspect без изображения в real-режиме', async () => {
     const api = await import('./api');
     await expect(api.inspectImage(null, MOCK_EQUIPMENT.id)).rejects.toMatchObject({ status: 400 });
@@ -339,5 +366,21 @@ describe('API-клиент: HTTP-контракт', () => {
       status: 422,
       message: 'file: Field required; equipment_id: Field required',
     });
+  });
+});
+
+describe('подробный анализ без backend', () => {
+  it('не создаёт mock-ответ и не отправляет запрос', async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_USE_MOCK_API', 'true');
+    const api = await import('./api');
+    const inspection = createMockInspection(1);
+
+    await expect(api.requestDetailedAnalysis({
+      image: new Blob(['frame'], { type: 'image/jpeg' }),
+      inspection,
+      conditionParameters: inspection.condition_parameters,
+    })).rejects.toMatchObject({ name: 'ApiError', status: 501 });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

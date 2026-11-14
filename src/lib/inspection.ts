@@ -93,9 +93,35 @@ export interface InspectionResult {
   inspection_id: string;
   equipment: EquipmentDetail;
   defects: Defect[];
+  condition_parameters: ConditionParameters;
   llm: LlmAssessment;
   summary: string;
   meta: InspectionMeta;
+}
+
+export interface ConditionParameters {
+  oil_leak_probability: number | null;
+  rust_probability: number | null;
+  poor_weld_probability: number | null;
+}
+
+export interface DetailedFinding {
+  title: string;
+  description: string;
+  severity: Severity;
+  recommendation: string;
+}
+
+export interface DetailedAnalysisResult {
+  analysis_id: string;
+  inspection_id: string;
+  summary: string;
+  findings: DetailedFinding[];
+  probable_causes: string[];
+  recommendation_steps: string[];
+  models: string[];
+  processing_ms: number;
+  analyzed_at: string;
 }
 
 /**
@@ -338,6 +364,11 @@ export function createMockInspection(
     inspection_id: `insp-demo-${String(tick).padStart(4, '0')}`,
     equipment,
     defects,
+    condition_parameters: {
+      oil_leak_probability: null,
+      rust_probability: null,
+      poor_weld_probability: null,
+    },
     llm: {
       criticality: 'high',
       probable_cause:

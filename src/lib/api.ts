@@ -15,6 +15,8 @@ import {
   MOCK_EQUIPMENT_LIST,
   MOCK_REPORTS,
   createMockInspection,
+  type ConditionParameters,
+  type DetailedAnalysisResult,
   type EquipmentDetail,
   type EquipmentSummary,
   type InspectionResult,
@@ -298,6 +300,33 @@ export async function inspectImage(
   form.append('equipment_id', equipmentId);
 
   return request<InspectionResult>('/api/inspect', {
+    method: 'POST',
+    body: form,
+  });
+}
+
+export interface DetailedAnalysisInput {
+  image: Blob;
+  inspection: InspectionResult;
+  conditionParameters: ConditionParameters;
+}
+
+/** Proposed endpoint only; the backend implementation has not been connected. */
+export async function requestDetailedAnalysis({
+  image,
+  inspection,
+  conditionParameters,
+}: DetailedAnalysisInput): Promise<DetailedAnalysisResult> {
+  if (API_CONFIG.useMock) {
+    throw new ApiError(501, 'Подробный анализ доступен после подключения backend.');
+  }
+
+  const form = new FormData();
+  form.append('file', image, 'frame.jpg');
+  form.append('inspection', JSON.stringify(inspection));
+  form.append('condition_parameters', JSON.stringify(conditionParameters));
+
+  return request<DetailedAnalysisResult>('/api/inspect/detailed', {
     method: 'POST',
     body: form,
   });

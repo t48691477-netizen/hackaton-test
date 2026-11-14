@@ -5,13 +5,18 @@ import { AppRoutes } from '../App';
 import { RoleProvider } from '../context/RoleContext';
 import * as api from '../lib/api';
 import { MOCK_ENGINEERS } from '../lib/employees';
-import { createMockInspection, type Report } from '../lib/inspection';
+import {
+  createMockInspection,
+  type DetailedAnalysisResult,
+  type Report,
+} from '../lib/inspection';
 import { SESSION_STORAGE_KEY } from '../lib/session';
 
 const originalMediaDevices = navigator.mediaDevices;
 const originalPlay = HTMLMediaElement.prototype.play;
 const originalGetContext = HTMLCanvasElement.prototype.getContext;
 const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+const originalToBlob = HTMLCanvasElement.prototype.toBlob;
 const originalImage = window.Image;
 const originalFileReader = window.FileReader;
 const originalClipboard = navigator.clipboard;
@@ -20,6 +25,7 @@ const originalUseMock = api.API_CONFIG.useMock;
 const stopTrack = vi.fn();
 let inspectImageSpy: MockInstance<typeof api.inspectImage>;
 let createReportSpy: MockInstance<typeof api.createReport>;
+let detailedAnalysisSpy: MockInstance<typeof api.requestDetailedAnalysis>;
 
 function savedReport(input: api.CreateReportInput): Report {
   const assignee =
@@ -123,6 +129,7 @@ beforeEach(() => {
   stopTrack.mockClear();
   inspectImageSpy = vi.spyOn(api, 'inspectImage');
   createReportSpy = vi.spyOn(api, 'createReport');
+  detailedAnalysisSpy = vi.spyOn(api, 'requestDetailedAnalysis');
   Object.defineProperty(api.API_CONFIG, 'useMock', { configurable: true, value: true });
 
   Object.defineProperty(navigator, 'mediaDevices', {
@@ -147,6 +154,10 @@ beforeEach(() => {
   Object.defineProperty(HTMLCanvasElement.prototype, 'toDataURL', {
     configurable: true,
     value: vi.fn(() => 'data:image/jpeg;base64,mock'),
+  });
+  Object.defineProperty(HTMLCanvasElement.prototype, 'toBlob', {
+    configurable: true,
+    value: (callback: BlobCallback) => callback(new Blob(['frame'], { type: 'image/jpeg' })),
   });
 });
 
@@ -177,6 +188,10 @@ afterEach(() => {
   Object.defineProperty(HTMLCanvasElement.prototype, 'toDataURL', {
     configurable: true,
     value: originalToDataURL,
+  });
+  Object.defineProperty(HTMLCanvasElement.prototype, 'toBlob', {
+    configurable: true,
+    value: originalToBlob,
   });
   Object.defineProperty(window, 'Image', {
     configurable: true,
@@ -248,6 +263,11 @@ describe('веб-сканер', () => {
     expect(
       await screen.findByText('Трещина корпуса', {}, { timeout: 3000 }),
     ).toBeInTheDocument();
+    const parameters = screen.getByRole('region', { name: 'Параметры realtime' });
+    expect(within(parameters).getByText('Утечка масла')).toBeInTheDocument();
+    expect(within(parameters).getByText('Ржавчина')).toBeInTheDocument();
+    expect(within(parameters).getByText('Плохой сварной шов')).toBeInTheDocument();
+    expect(within(parameters).getAllByText('Нет данных')).toHaveLength(3);
     expect(
       screen.getByText('Технические характеристики'),
     ).toBeInTheDocument();
@@ -391,9 +411,60 @@ describe('веб-сканер', () => {
     await advanceTime(500);
     expect(screen.getByRole('status')).toHaveTextContent('Снимок распознан');
     expect(screen.getByText('Трещина корпуса')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'более точный отчет' })).toBeEnabled();
     expect(inspectImageSpy).toHaveBeenCalledTimes(1);
     await advanceTime(5400);
     expect(inspectImageSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('показывает, что детальный backend пока не подключён', async () => {
+    renderScanner();
+    await uploadPhoto();
+    await screen.findByText('Трещина корпуса', {}, { timeout: 3000 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'более точный отчет' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Подробный анализ доступен после подключения backend.',
+    );
+    expect(detailedAnalysisSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('передаёт последний кадр и показывает ответ детального анализа', async () => {
+    renderScanner();
+    const image = await uploadPhoto();
+    await screen.findByText('Трещина корпуса', {}, { timeout: 3000 });
+    const inspection = inspectImageSpy.mock.results[0].value;
+    const result = await inspection;
+    const detail: DetailedAnalysisResult = {
+      analysis_id: 'detail-test',
+      inspection_id: result.inspection_id,
+      summary: 'Нужна проверка уплотнения.',
+      findings: [{
+        title: 'Следы масла',
+        description: 'Видна зона возможной утечки.',
+        severity: 'medium',
+        recommendation: 'Проверить уплотнение.',
+      }],
+      probable_causes: ['Износ уплотнения'],
+      recommendation_steps: ['Проверить уплотнение специалистом.'],
+      models: ['model-a', 'model-b'],
+      processing_ms: 1200,
+      analyzed_at: '2026-11-14T12:00:00Z',
+    };
+    detailedAnalysisSpy.mockResolvedValue(detail);
+    Object.defineProperty(api.API_CONFIG, 'useMock', { configurable: true, value: false });
+
+    fireEvent.click(screen.getByRole('button', { name: 'более точный отчет' }));
+
+    expect(detailedAnalysisSpy).toHaveBeenCalledWith({
+      image,
+      inspection: result,
+      conditionParameters: result.condition_parameters,
+    });
+    expect(await screen.findByText(detail.summary)).toBeInTheDocument();
+    expect(screen.getByText('Следы масла')).toBeInTheDocument();
+    expect(screen.getByText(/model-a, model-b/)).toBeInTheDocument();
   });
 
   it('не пропускает анализ фото, когда запрос предыдущего кадра ещё выполняется', async () => {
