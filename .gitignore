@@ -1,0 +1,37 @@
+# Built by Gradle
+.gradle/
+.kotlin/
+build/
+app/build/
+*.hprof
+
+# Local configuration
+local.properties
+keystore.properties
+*.jks
+*.keystore
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+
+# NDK / native
+.externalNativeBuild/
+.cxx/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Local secrets and deployment configuration
+.env
+.env.*
+!.env.example

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>AR-Инспектор · QR для стенда</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  body { font-family: ui-monospace, Consolas, monospace; background:#fff; color:#0b0f12; margin:0; }
+  header { border-bottom:3px solid #0b0f12; padding-bottom:8px; margin-bottom:18px; }
+  h1 { font-size:18px; letter-spacing:.14em; margin:0 0 4px; }
+  .sub { font-size:10px; color:#5a6a72; letter-spacing:.1em; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .cell { border:1px solid #c8d0d4; padding:12px; text-align:center; page-break-inside:avoid; }
+  .cell img { width:100%; max-width:250px; }
+  .id { font-size:19px; font-weight:700; letter-spacing:.1em; margin-top:6px; }
+  .name { font-size:10px; color:#5a6a72; margin-top:3px; }
+  .hint { margin-top:16px; font-size:10px; color:#5a6a72; line-height:1.6; border-top:1px dashed #c8d0d4; padding-top:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AR · ИНСПЕКТОР — QR ДЛЯ СТЕНДА</h1>
+  <div class="sub">КИБЕР 102 · РАСПЕЧАТАЙ НА A4 И НАКЛЕЙ НА МАКЕТ ОБОРУДОВАНИЯ</div>
+</header>
+<div class="grid">
+  <div class="cell"><img src="PUMP-402.png"><div class="id">PUMP-402</div><div class="name">Насосный агрегат ЦНС 38-220</div></div>
+  <div class="cell"><img src="PUMP-118.png"><div class="id">PUMP-118</div><div class="name">Насос центробежный К-80</div></div>
+  <div class="cell"><img src="VALVE-77.png"><div class="id">VALVE-77</div><div class="name">Задвижка клиновая DN200</div></div>
+  <div class="cell" style="display:grid;place-items:center">
+    <div style="font-size:11px;line-height:1.9;color:#5a6a72">
+      Сканер в приложении читает<br>только QR-коды.<br><br>
+      Если камера не читает —<br>введите код вручную<br>на экране сканера.
+    </div>
+  </div>
+</div>
+<div class="hint">
+  Большие поля вокруг кода (quiet zone) обязательны: ML Kit не распознаёт QR, обрезанный по краю.
+  Печатать без масштабирования («Actual size», 100%).
+</div>
+</body>
+</html>
