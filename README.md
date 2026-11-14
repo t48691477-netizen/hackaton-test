@@ -42,7 +42,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | `TOIR_ACCESS_KEY_HASH` | хеш ключа доступа |
 | `TOIR_CORS_ORIGINS` | разрешённые источники для веб-панели |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | отправка писем с ключами |
-| `GEMINI_API_KEY` или `OPENAI_API_KEY` | LLM-эксперт для подробного анализа |
+| `OLLAMA_MODEL`, `OLLAMA_URL` | локальная LLM из Ollama для подробного анализа (приоритет над облаком), по умолчанию `http://127.0.0.1:11434` |
+| `GEMINI_API_KEY` или `OPENAI_API_KEY` | облачная LLM, запасной вариант |
+| `CORROSION_WEIGHTS`, `OIL_WEIGHTS`, `WELDING_WEIGHTS` | пути к весам; по умолчанию берётся `corrosion_yolo26.pt` / `oil_yolo26.pt`, если файлы есть, иначе прежние |
 
 ### Веб-панель
 

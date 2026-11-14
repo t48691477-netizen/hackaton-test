@@ -57,6 +57,52 @@ class TOIRExpertService:
             for d in defects
         ]
 
+    def _ollama_chat(self, user_content: str) -> Optional[Dict[str, Any]]:
+        model = settings.OLLAMA_MODEL or os.getenv("OLLAMA_MODEL", "")
+        if not model:
+            return None
+        try:
+            import requests
+            resp = requests.post(
+                f"{settings.OLLAMA_URL.rstrip('/')}/api/chat",
+                json={
+                    "model": model,
+                    "stream": False,
+                    "think": False,
+                    "format": "json",
+                    "options": {"temperature": 0.2, "num_ctx": 4096},
+                    "messages": [
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": user_content},
+                    ],
+                },
+                timeout=settings.OLLAMA_TIMEOUT,
+            )
+            if resp.status_code != 200:
+                logger.warning(f"Ollama вернул {resp.status_code}: {resp.text[:200]}")
+                return None
+            return json.loads(resp.json()["message"]["content"])
+        except Exception as e:
+            logger.warning(f"Ошибка вызова Ollama: {e}")
+            return None
+
+    def _call_ollama(self, prompt: str) -> Optional[LLMRecommendation]:
+        parsed = self._ollama_chat(f"ВХОДНЫЕ ДАННЫЕ:\n{prompt}")
+        if not parsed:
+            return None
+        try:
+            recs = parsed.get("recommendations") or []
+            if isinstance(recs, str):
+                recs = [recs]
+            return LLMRecommendation(
+                criticality=CriticalityLevel(str(parsed.get("criticality", "medium")).lower()),
+                probable_cause=str(parsed.get("probable_cause") or "Не установлена"),
+                recommendations=[str(r) for r in recs],
+            )
+        except Exception as e:
+            logger.warning(f"Некорректный ответ Ollama: {e}")
+            return None
+
     def _call_gemini_api(self, prompt: str) -> Optional[LLMRecommendation]:
         """Вызов Google Gemini API через официальный SDK или прямой HTTP запрос."""
         api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
@@ -188,7 +234,10 @@ class TOIRExpertService:
             "defects_count": len(defects)
         }, ensure_ascii=False, indent=2)
 
-        # 1. Попытка вызова внешней LLM
+        llm_result = self._call_ollama(user_prompt)
+        if llm_result is not None:
+            return llm_result
+
         llm_result = self._call_gemini_api(user_prompt)
         if llm_result is not None:
             return llm_result

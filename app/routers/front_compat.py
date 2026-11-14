@@ -133,7 +133,7 @@ def _models():
     c = model_loader.load_corrosion_model()
     w = model_loader.load_welding_model()
     if _oil_model is None:
-        p = settings.WEIGHTS_DIR / "oil_leaks.pt"
+        p = settings.OIL_LOCAL_PATH
         if p.exists():
             from ultralytics import YOLO
             _oil_model = YOLO(str(p))
@@ -175,6 +175,14 @@ def _run(model, img, conf, kind, skip, node_id):
             "node_id": node_id, "source_model": kind, "recommendation": rec,
         })
     return out
+
+
+def _model_names() -> dict:
+    return {
+        "corrosion": settings.CORROSION_LOCAL_PATH.stem,
+        "crack": settings.WELDING_LOCAL_PATH.stem,
+        "oil": settings.OIL_LOCAL_PATH.stem,
+    }
 
 
 def _eq_cached(equipment_id: str):
@@ -225,7 +233,7 @@ def inspect(file: UploadFile = File(...), equipment_id: str = Form(...)):
         "llm": {"criticality": crit, "probable_cause": cause, "recommendation_steps": steps},
         "summary": f"Найдено дефектов: {len(out)}. {cause}" if out else "Дефектов не обнаружено.",
         "meta": {"vision_mode": "real", "llm_mode": "mock",
-                 "models": {"corrosion": "YOLOv11-seg", "crack": "YOLOv8-det + Oil-seg"},
+                 "models": _model_names(),
                  "processing_ms": int((time.time() - t0) * 1000), "analyzed_at": _now()},
     }
 
@@ -243,12 +251,40 @@ def inspect_detailed(file: UploadFile = File(...), inspection: str = Form(...), 
         for d in insp.get("defects", [])
     ]
     llm = insp.get("llm", {})
+    summary = insp.get("summary", "")
+    causes = [llm.get("probable_cause", "")] if llm.get("probable_cause") else []
+    steps = llm.get("recommendation_steps", [])
+    llm_name = None
+    if insp.get("defects"):
+        eq = insp.get("equipment") or {}
+        payload = json.dumps({
+            "equipment_name": eq.get("name") or eq.get("id") or "агрегат",
+            "defects_found": [
+                {"label": d.get("label"), "source": d.get("source_model"), "confidence": d.get("confidence"), "severity": d.get("severity")}
+                for d in insp["defects"]
+            ],
+            "defects_count": len(insp["defects"]),
+        }, ensure_ascii=False)
+        res = llm_expert_service._ollama_chat(f"ВХОДНЫЕ ДАННЫЕ:\n{payload}")
+        if res:
+            cause = res.get("probable_cause")
+            recs = res.get("recommendations") or []
+            if isinstance(recs, str):
+                recs = [recs]
+            if cause or recs:
+                causes = [str(cause)] if cause else causes
+                steps = [str(r) for r in recs] or steps
+                llm_name = settings.OLLAMA_MODEL
+                crit = str(res.get("criticality", "")).lower()
+                if crit in _SEV_RANK:
+                    insp.setdefault("llm", {})["criticality"] = crit
     return {
         "analysis_id": f"an-{uuid.uuid4().hex[:10]}", "inspection_id": insp.get("inspection_id", ""),
-        "summary": insp.get("summary", ""), "findings": findings,
-        "probable_causes": [llm.get("probable_cause", "")] if llm.get("probable_cause") else [],
-        "recommendation_steps": llm.get("recommendation_steps", []),
-        "models": ["YOLOv11-seg", "YOLOv8-det"],
+        "summary": summary, "findings": findings,
+        "probable_causes": causes,
+        "recommendation_steps": steps,
+        "criticality": insp.get("llm", {}).get("criticality"),
+        "models": list(_model_names().values()) + ([llm_name] if llm_name else []),
         "processing_ms": int((datetime.now() - t0).total_seconds() * 1000), "analyzed_at": _now(),
     }
 
