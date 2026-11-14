@@ -36,6 +36,23 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 В Android Studio: открыть папку `repo`, `Run ▶`. JDK 17 обязателен
 (`File → Settings → Build → Gradle → Gradle JDK → 17`).
 
+### Проверка одной командой
+
+Перед показом — убедиться, что бэкенд отвечает по контракту `docs/API.md`:
+
+```bash
+python tools/verify_demo.py
+```
+
+Скрипт сам поднимает `backend/server.py` на свободном порту и проверяет
+19 пунктов: `offset_from_qr` у каждого узла, `node_id` → существующий узел,
+нормализованные `polygon`/`bbox`, сценарий `PUMP-402` (должны быть красные
+маркеры), пустой сценарий `VALVE-77`, формат `ACT-YYMMDD-XXXX`, `/api/chat`,
+QR-страницы и CORS. Код возврата `1` — демо не готово. Зависимостей нет.
+
+Проверить уже запущенный сервер: `python tools/verify_demo.py --url http://localhost:8080`.
+В live-режиме нужен настоящий кадр: `--image photo.jpg`.
+
 ### Адрес API
 
 | Где запущено приложение | Base URL |

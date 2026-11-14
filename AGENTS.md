@@ -39,6 +39,7 @@ app/src/main/java/ru/cyber102/arinspector/
 ├── ui/theme/                палитра «Engineering Iris»
 └── util/                    JPEG, PDF
 backend/server.py            API: mock + live (vision/LLM), /api/chat
+tools/verify_demo.py         проверка контракта демо одной командой (без зависимостей)
 docs/                        контракт, live-режим, дизайн, демо, онбординг
 demo/qr/                     QR для печати
 .opencode/skills/            скиллы: ui-review, build-verify, backend-live-ai
