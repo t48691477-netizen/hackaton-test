@@ -1,0 +1,145 @@
+<resources>
+    <string name="app_name">ПромСкан</string>
+    <string name="brand_header_title">ПромСкан</string>
+    <string name="brand_company_subtitle">КСТ Энерго · Инспекция оборудования</string>
+
+    <!-- Navigation -->
+    <string name="nav_scanner">Сканер</string>
+    <string name="nav_tasks">Задачи</string>
+    <string name="nav_settings">Настройки</string>
+    <string name="cd_back">Назад</string>
+    <string name="cd_settings">Открыть настройки</string>
+
+    <!-- Startup & Roles -->
+    <string name="session_checking">Проверка сессии…</string>
+    <string name="role_director">Директор</string>
+    <string name="role_admin">Администратор</string>
+    <string name="role_dispatcher">Диспетчер</string>
+    <string name="role_engineer">Инженер</string>
+    <string name="access_no_scan_permission">У вашей учётной записи нет прав на сканирование и осмотр.</string>
+
+    <!-- Login -->
+    <string name="login_title">Вход в систему</string>
+    <string name="login_subtitle">Введите индивидуальный 10-значный ключ доступа сотрудника.</string>
+    <string name="login_key_label">Индивидуальный ключ</string>
+    <string name="login_key_placeholder">10 символов (A-Z, 2-9)</string>
+    <string name="login_key_helper">Пробелы и дефисы игнорируются автоматически</string>
+    <string name="login_button">Войти по ключу</string>
+    <string name="login_show_key">Показать ключ</string>
+    <string name="login_hide_key">Скрыть ключ</string>
+    <string name="login_error_invalid_length">Ключ должен содержать ровно 10 допустимых символов</string>
+    <string name="login_error_401">Ключ не подошёл</string>
+    <string name="login_error_429">Слишком много попыток, повторите позже</string>
+    <string name="login_error_503">Сервис входа недоступен</string>
+    <string name="error_network">Нет связи с сервером</string>
+    <string name="error_unknown">Неизвестная ошибка</string>
+
+    <!-- Scanner -->
+    <string name="scanner_permission_title">Требуется доступ к камере</string>
+    <string name="scanner_permission_rationale">Камера необходима для сканирования QR-кодов оборудования и видеоанализа дефектов узлов.</string>
+    <string name="scanner_permission_grant">Разрешить камеру</string>
+    <string name="scanner_permission_denied_title">Камера заблокирована</string>
+    <string name="scanner_permission_denied_desc">Разрешите доступ к камере в системных настройках приложения, чтобы продолжить работу со сканером.</string>
+    <string name="scanner_open_app_settings">Открыть настройки</string>
+    <string name="scanner_manual_id_button">Ввести ID</string>
+    <string name="scanner_manual_id_title">Ввод ID оборудования</string>
+    <string name="scanner_manual_id_label">Идентификатор оборудования</string>
+    <string name="scanner_manual_id_confirm">Найти</string>
+    <string name="scanner_qr_prompt">Наведите камеру на QR-код оборудования</string>
+    <string name="scanner_equipment_not_found">Оборудование не найдено</string>
+    <string name="scanner_loading_equipment">Загрузка паспорта оборудования…</string>
+    <string name="scanner_change_equipment">Сменить</string>
+    <string name="scanner_passport_title">Паспорт оборудования</string>
+    <string name="scanner_analyze_start">Анализ</string>
+    <string name="scanner_analyze_stop">Стоп</string>
+    <string name="scanner_analyzing_badge">Живой анализ</string>
+    <string name="scanner_conclusion_button">Заключение</string>
+    <string name="scanner_create_report_button">Создать заявку</string>
+    <string name="scanner_pdf_button">Акт PDF</string>
+    <string name="scanner_no_frame_yet">Сначала выполните анализ хотя бы одного кадра</string>
+    <string name="scanner_detailed_loading">Формирование подробного заключения…</string>
+    <string name="scanner_detailed_title">Подробное заключение</string>
+    <string name="scanner_detailed_findings">Обнаруженные дефекты</string>
+    <string name="scanner_detailed_causes">Вероятные причины</string>
+    <string name="scanner_detailed_steps">Рекомендуемые шаги</string>
+    <string name="scanner_create_report_title">Новая заявка на ремонт</string>
+    <string name="scanner_create_report_comment">Комментарий</string>
+    <string name="scanner_create_report_hint">Опишите детали или условия осмотра…</string>
+    <string name="scanner_create_report_submit">Отправить заявку</string>
+    <string name="scanner_create_report_success">Заявка успешно создана</string>
+    <string name="scanner_pdf_error">Не удалось сформировать PDF-акт</string>
+    <string name="scanner_share_pdf_title">Поделиться актом осмотра</string>
+
+    <!-- Equipment fields -->
+    <string name="eq_inventory_number">Инв. №</string>
+    <string name="eq_location">Расположение</string>
+    <string name="eq_last_to">Последнее ТО</string>
+    <string name="eq_next_to">Следующее ТО</string>
+    <string name="eq_nodes_title">Узлы оборудования</string>
+    <string name="eq_specs_title">Характеристики</string>
+    <string name="state_operational">В работе</string>
+    <string name="state_maintenance">Обслуживание</string>
+    <string name="state_fault">Неисправность</string>
+
+    <!-- Condition parameters & severity -->
+    <string name="param_oil_leak">Утечка масла</string>
+    <string name="param_rust">Ржавчина</string>
+    <string name="param_poor_weld">Плохой сварной шов</string>
+    <string name="severity_high">высокая</string>
+    <string name="severity_medium">средняя</string>
+    <string name="severity_low">низкая</string>
+    <string name="criticality_label">Критичность</string>
+
+    <!-- Tasks -->
+    <string name="tasks_title">Заявки на ремонт</string>
+    <string name="tasks_filter_all">Все</string>
+    <string name="tasks_filter_open">Открытые</string>
+    <string name="tasks_filter_in_progress">В работе</string>
+    <string name="tasks_filter_closed">Закрытые</string>
+    <string name="tasks_empty">Заявок пока нет</string>
+    <string name="tasks_empty_hint">Отсканируйте оборудование и создайте заявку после анализа дефектов.</string>
+    <string name="tasks_retry">Повторить</string>
+    <string name="status_open">Открыта</string>
+    <string name="status_in_progress">В работе</string>
+    <string name="status_closed">Закрыта</string>
+    <string name="task_detail_title">Заявка</string>
+    <string name="task_take_in_work">Взять в работу</string>
+    <string name="task_complete">Завершить</string>
+    <string name="task_complete_dialog_title">Завершение заявки</string>
+    <string name="task_repair_comment_label">Комментарий о ремонте</string>
+    <string name="task_repair_comment_hint">Опишите выполненные работы…</string>
+    <string name="task_confirm_complete">Завершить заявку</string>
+    <string name="task_assignee">Исполнитель</string>
+    <string name="task_unassigned">Не назначен</string>
+    <string name="task_timeline">Хронология</string>
+    <string name="task_created_at">Создана</string>
+    <string name="task_started_at">Взята в работу</string>
+    <string name="task_completed_at">Завершена</string>
+    <string name="task_defects">Зафиксированные дефекты</string>
+    <string name="task_conclusion">Заключение</string>
+    <string name="task_recommendations">Рекомендации</string>
+    <string name="task_repair_comment_section">Комментарий о ремонте</string>
+    <string name="task_comment_section">Комментарий при создании</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_server_section">Подключение к серверу</string>
+    <string name="settings_server_url_label">Адрес сервера</string>
+    <string name="settings_server_url_hint">http://10.0.2.2:8000/</string>
+    <string name="settings_save_url">Сохранить</string>
+    <string name="settings_check_health">Проверить</string>
+    <string name="settings_health_ok">Сервер доступен</string>
+    <string name="settings_interval_section">Интервал видеоанализа</string>
+    <string name="settings_interval_1s">1 сек</string>
+    <string name="settings_interval_2s">2 сек</string>
+    <string name="settings_interval_3s">3 сек</string>
+    <string name="settings_profile_section">Профиль сотрудника</string>
+    <string name="settings_logout">Выйти</string>
+    <string name="settings_version_section">О приложении</string>
+    <string name="settings_version_label">Версия</string>
+
+    <!-- Common -->
+    <string name="cancel">Отмена</string>
+    <string name="close">Закрыть</string>
+    <string name="ok">ОК</string>
+</resources>

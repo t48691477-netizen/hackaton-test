@@ -1,0 +1,22 @@
+http://{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
+
+{$DOMAIN} {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+	}
+	request_body {
+		max_size 20MB
+	}
+
+	@api_docs path /docs /docs/* /redoc /redoc/* /openapi.json
+	respond @api_docs 404
+
+	reverse_proxy {$API_UPSTREAM:api:8000} {
+		header_up X-Real-IP {remote_host}
+	}
+}

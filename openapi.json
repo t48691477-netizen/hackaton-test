@@ -1,0 +1,1128 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ТОиР Эксперт AI API",
+    "description": "Интеллектуальная система предиктивной аналитики и детекции дефектов оборудования (ТОиР). Включает сегментацию очагов коррозии (YOLOv11-seg), детекцию дефектов сварных швов (YOLOv8-det) и генерацию экспертных заключений главного инженера ТОиР на базе LLM.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/equipment": {
+      "get": {
+        "tags": [
+          "Equipment (Оборудование и узлы)"
+        ],
+        "summary": "Получить список всего оборудования",
+        "description": "Возвращает полный реестр агрегатов предприятия со статусами и счетчиком проверок.",
+        "operationId": "get_equipment_list_api_equipment_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EquipmentResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Get Equipment List Api Equipment Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Equipment (Оборудование и узлы)"
+        ],
+        "summary": "Создать или обновить агрегат (для веб-интерфейса)",
+        "description": "Создает новую запись об агрегате или обновляет существующую, если передан существующий ID.",
+        "operationId": "create_or_update_equipment_api_equipment_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EquipmentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquipmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/equipment/{equipment_id}": {
+      "get": {
+        "tags": [
+          "Equipment (Оборудование и узлы)"
+        ],
+        "summary": "Получить детальную карточку агрегата",
+        "description": "Возвращает подробную карточку конкретного агрегата с узлами, датами ТО и коэффициентами критичности.",
+        "operationId": "get_equipment_detail_api_equipment__equipment_id__get",
+        "parameters": [
+          {
+            "name": "equipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Equipment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquipmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/inspect": {
+      "post": {
+        "tags": [
+          "Inspection & AI (Нейросети + LLM)"
+        ],
+        "summary": "Комплексная инспекция: YOLO (детекция + сегментация) + Эксперт ТОиР (LLM)",
+        "description": "Принимает фотографию узла оборудования и его ID. В едином пайплайне выполняет:\n1. Сегментацию очагов коррозии (Decizez/yolov-corrosion-detection) с получением полигонов;\n2. Детекцию дефектов сварных швов и трещин (avinashhm/welding-defect-yolov8-full-training) с получением боксов;\n3. Инженерный анализ Главным экспертом ТОиР (LLM) с расчетом критичности и пошаговыми рекомендациями;\n4. Отрисовку и сохранение аннотированного фото для веб/мобайла.",
+        "operationId": "inspect_equipment_api_inspect_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_inspect_equipment_api_inspect_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InspectResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports": {
+      "get": {
+        "tags": [
+          "Reports & Dispatcher (Акты осмотра и диспетчеризация)"
+        ],
+        "summary": "Получить реестр актов осмотра для диспетчера",
+        "description": "Возвращает журнал всех актов дефектоскопии и ремонтов. Поддерживает фильтрацию по статусу ремонта и ID оборудования.",
+        "operationId": "get_reports_api_reports_get",
+        "parameters": [
+          {
+            "name": "repair_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RepairStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Фильтр по статусу (pending, in_progress, completed, rejected)",
+              "title": "Repair Status"
+            },
+            "description": "Фильтр по статусу (pending, in_progress, completed, rejected)"
+          },
+          {
+            "name": "equipment_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Фильтр по идентификатору оборудования",
+              "title": "Equipment Id"
+            },
+            "description": "Фильтр по идентификатору оборудования"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReportResponse"
+                  },
+                  "title": "Response Get Reports Api Reports Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Reports & Dispatcher (Акты осмотра и диспетчеризация)"
+        ],
+        "summary": "Сохранить акт осмотра, статус ремонта и итоговое фото",
+        "description": "Регистрирует официальный акт осмотра ТОиР с перечнем дефектов, заключением LLM, статусом ремонта и фотоматериалами.",
+        "operationId": "create_report_api_reports_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "Root"
+        ],
+        "summary": "Root",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health Check",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_inspect_equipment_api_inspect_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Файл изображения (.jpg, .png, .webp) для детекции дефектов"
+          },
+          "equipment_id": {
+            "type": "string",
+            "title": "Equipment Id",
+            "description": "ID оборудования в системе ТОиР",
+            "examples": [
+              "pump_d1250_03"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "equipment_id"
+        ],
+        "title": "Body_inspect_equipment_api_inspect_post"
+      },
+      "ComponentSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "ID узла агрегата",
+            "examples": [
+              "comp_rotor_01"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Наименование узла агрегата",
+            "examples": [
+              "Ротор турбины"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Тип узла",
+            "examples": [
+              "Вращающийся механизм"
+            ]
+          },
+          "installation_date": {
+            "type": "string",
+            "title": "Installation Date",
+            "description": "Дата монтажа узла (ГГГГ-ММ-ДД)",
+            "examples": [
+              "2021-04-12"
+            ]
+          },
+          "age_months": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Age Months",
+            "description": "Возраст узла в месяцах",
+            "examples": [
+              66
+            ]
+          },
+          "criticality_factor": {
+            "type": "number",
+            "title": "Criticality Factor",
+            "description": "Коэффициент ответственности узла (0.5 - 2.0)",
+            "default": 1.0,
+            "examples": [
+              1.5
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "type",
+          "installation_date",
+          "age_months"
+        ],
+        "title": "ComponentSchema"
+      },
+      "CriticalityLevel": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "title": "CriticalityLevel"
+      },
+      "DefectCategory": {
+        "type": "string",
+        "enum": [
+          "corrosion",
+          "welding_defect",
+          "crack",
+          "unknown"
+        ],
+        "title": "DefectCategory"
+      },
+      "DefectItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Уникальный идентификатор обнаруженного дефекта",
+            "examples": [
+              "defect_1"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Наименование дефекта (Rust, Bad Weld, copper corrosion, etc.)",
+            "examples": [
+              "corrosion",
+              "Bad Weld"
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/DefectCategory",
+            "description": "Категория дефекта: corrosion (коррозия) или welding_defect (сварной шов/трещина)",
+            "examples": [
+              "corrosion"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "Уверенность модели в детекции от 0.0 до 1.0",
+            "examples": [
+              0.92
+            ]
+          },
+          "bbox": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Bbox",
+            "description": "Координаты бокса в пикселях: [x_min, y_min, x_max, y_max]",
+            "examples": [
+              [
+                120.5,
+                84.0,
+                310.2,
+                450.8
+              ]
+            ]
+          },
+          "bbox_normalized": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Bbox Normalized",
+            "description": "Координаты бокса, нормализованные от 0.0 до 1.0: [x_min, y_min, x_max, y_max]",
+            "examples": [
+              [
+                0.12,
+                0.08,
+                0.31,
+                0.45
+              ]
+            ]
+          },
+          "polygon": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Polygon",
+            "description": "Массив точек [x, y] контура маски сегментации в нормализованных координатах [0.0 - 1.0]",
+            "examples": [
+              [
+                [
+                  0.12,
+                  0.08
+                ],
+                [
+                  0.15,
+                  0.12
+                ],
+                [
+                  0.22,
+                  0.25
+                ],
+                [
+                  0.31,
+                  0.45
+                ],
+                [
+                  0.12,
+                  0.08
+                ]
+              ]
+            ]
+          },
+          "model_source": {
+            "type": "string",
+            "title": "Model Source",
+            "description": "Название исходной нейросети",
+            "examples": [
+              "Decizez/yolov-corrosion-detection",
+              "avinashhm/welding-defect-yolov8-full-training"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "category",
+          "confidence",
+          "bbox",
+          "bbox_normalized",
+          "model_source"
+        ],
+        "title": "DefectItem"
+      },
+      "EquipmentCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Наименование оборудования",
+            "examples": [
+              "Насос сетевой центробежный 1Д1250-125"
+            ]
+          },
+          "serial_number": {
+            "type": "string",
+            "title": "Serial Number",
+            "description": "Заводской серийный номер",
+            "examples": [
+              "SN-2019-9482-B"
+            ]
+          },
+          "location": {
+            "type": "string",
+            "title": "Location",
+            "description": "Цех / Участок / Место установки",
+            "examples": [
+              "Цех №3, насосная станция оборотного водоснабжения"
+            ]
+          },
+          "installation_date": {
+            "type": "string",
+            "title": "Installation Date",
+            "description": "Дата ввода в эксплуатацию (ГГГГ-ММ-ДД)",
+            "examples": [
+              "2019-06-15"
+            ]
+          },
+          "component_age": {
+            "type": "string",
+            "title": "Component Age",
+            "description": "Возраст агрегата/узлов (текст или число лет)",
+            "examples": [
+              "7 лет 5 месяцев"
+            ]
+          },
+          "last_maintenance_date": {
+            "type": "string",
+            "title": "Last Maintenance Date",
+            "description": "Дата последнего ТО (ГГГГ-ММ-ДД)",
+            "examples": [
+              "2026-03-20"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Текущий статус (operational, warning, maintenance, stopped)",
+            "default": "operational",
+            "examples": [
+              "operational"
+            ]
+          },
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/ComponentSchema"
+            },
+            "type": "array",
+            "title": "Components",
+            "description": "Список входящих узлов агрегата"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "Опциональный ID агрегата (если передан, используется для обновления)",
+            "examples": [
+              "pump_station_3"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "serial_number",
+          "location",
+          "installation_date",
+          "component_age",
+          "last_maintenance_date"
+        ],
+        "title": "EquipmentCreate"
+      },
+      "EquipmentResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Наименование оборудования",
+            "examples": [
+              "Насос сетевой центробежный 1Д1250-125"
+            ]
+          },
+          "serial_number": {
+            "type": "string",
+            "title": "Serial Number",
+            "description": "Заводской серийный номер",
+            "examples": [
+              "SN-2019-9482-B"
+            ]
+          },
+          "location": {
+            "type": "string",
+            "title": "Location",
+            "description": "Цех / Участок / Место установки",
+            "examples": [
+              "Цех №3, насосная станция оборотного водоснабжения"
+            ]
+          },
+          "installation_date": {
+            "type": "string",
+            "title": "Installation Date",
+            "description": "Дата ввода в эксплуатацию (ГГГГ-ММ-ДД)",
+            "examples": [
+              "2019-06-15"
+            ]
+          },
+          "component_age": {
+            "type": "string",
+            "title": "Component Age",
+            "description": "Возраст агрегата/узлов (текст или число лет)",
+            "examples": [
+              "7 лет 5 месяцев"
+            ]
+          },
+          "last_maintenance_date": {
+            "type": "string",
+            "title": "Last Maintenance Date",
+            "description": "Дата последнего ТО (ГГГГ-ММ-ДД)",
+            "examples": [
+              "2026-03-20"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Текущий статус (operational, warning, maintenance, stopped)",
+            "default": "operational",
+            "examples": [
+              "operational"
+            ]
+          },
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/ComponentSchema"
+            },
+            "type": "array",
+            "title": "Components",
+            "description": "Список входящих узлов агрегата"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Уникальный идентификатор оборудования",
+            "examples": [
+              "pump_station_3"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "description": "Дата и время создания записи",
+            "examples": [
+              "2026-11-01T10:00:00"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At",
+            "description": "Дата и время последнего обновления",
+            "examples": [
+              "2026-11-13T09:30:00"
+            ]
+          },
+          "inspection_count": {
+            "type": "integer",
+            "title": "Inspection Count",
+            "description": "Количество проведенных инспекций",
+            "default": 0,
+            "examples": [
+              4
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "serial_number",
+          "location",
+          "installation_date",
+          "component_age",
+          "last_maintenance_date",
+          "id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EquipmentResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InspectResponse": {
+        "properties": {
+          "equipment_id": {
+            "type": "string",
+            "title": "Equipment Id",
+            "description": "ID проинспектированного оборудования",
+            "examples": [
+              "pump_station_3"
+            ]
+          },
+          "equipment_name": {
+            "type": "string",
+            "title": "Equipment Name",
+            "description": "Наименование оборудования",
+            "examples": [
+              "Насос сетевой 1Д1250-125"
+            ]
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp",
+            "description": "Метка времени инспекции",
+            "examples": [
+              "2026-11-13T10:15:30Z"
+            ]
+          },
+          "defects_count": {
+            "type": "integer",
+            "title": "Defects Count",
+            "description": "Количество выявленных дефектов",
+            "examples": [
+              2
+            ]
+          },
+          "defects": {
+            "items": {
+              "$ref": "#/components/schemas/DefectItem"
+            },
+            "type": "array",
+            "title": "Defects",
+            "description": "Список дефектов с боксами, масками и уверенностью"
+          },
+          "expert_opinion": {
+            "$ref": "#/components/schemas/LLMRecommendation",
+            "description": "Заключение Главного эксперта ТОиР (LLM)"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url",
+            "description": "URL сохраненного исходного фото",
+            "examples": [
+              "/static/uploads/insp_1731481234_orig.jpg"
+            ]
+          },
+          "annotated_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Annotated Image Url",
+            "description": "URL размеченного изображения с визуализацией масок и боксов",
+            "examples": [
+              "/static/uploads/insp_1731481234_annotated.jpg"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "equipment_id",
+          "equipment_name",
+          "timestamp",
+          "defects_count",
+          "defects",
+          "expert_opinion",
+          "image_url"
+        ],
+        "title": "InspectResponse"
+      },
+      "LLMRecommendation": {
+        "properties": {
+          "criticality": {
+            "$ref": "#/components/schemas/CriticalityLevel",
+            "description": "Уровень критичности дефектов для безаварийной работы: low, medium, high",
+            "examples": [
+              "high"
+            ]
+          },
+          "probable_cause": {
+            "type": "string",
+            "title": "Probable Cause",
+            "description": "Предполагаемая физико-химическая или эксплуатационная причина возникновения дефектов",
+            "examples": [
+              "Кавитационная эрозия с последующим электрохимическим коррозионным поражением металла шва из-за нарушения регламента гидроиспытаний и отсутствия пассивации."
+            ]
+          },
+          "recommendations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommendations",
+            "description": "Пошаговая рекомендация по ТОиР: локализация, методы неразрушающего контроля, ремонт и регламент безопасности",
+            "examples": [
+              "1. Немедленно снизить рабочее давление на агрегате на 30% и уведомить диспетчера цеха.",
+              "2. Выполнить ультразвуковую дефектоскопию (УЗД) зоны сварного соединения на глубину трещины.",
+              "3. Произвести механическую зачистку очага коррозии до чистого металла (степень Sa 2.5).",
+              "4. Вырезать дефектный участок шва и выполнить повторную сварку электродами типа Э50А с контролем твердости.",
+              "5. Нанести двухкомпонентное антикоррозионное полиуретановое покрытие толщиной не менее 180 мкм."
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "criticality",
+          "probable_cause",
+          "recommendations"
+        ],
+        "title": "LLMRecommendation"
+      },
+      "RepairStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "in_progress",
+          "completed",
+          "rejected"
+        ],
+        "title": "RepairStatus"
+      },
+      "ReportCreate": {
+        "properties": {
+          "equipment_id": {
+            "type": "string",
+            "title": "Equipment Id",
+            "description": "ID агрегата",
+            "examples": [
+              "pump_station_3"
+            ]
+          },
+          "repair_status": {
+            "$ref": "#/components/schemas/RepairStatus",
+            "description": "Статус ремонта",
+            "default": "pending",
+            "examples": [
+              "pending"
+            ]
+          },
+          "dispatcher_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatcher Notes",
+            "description": "Комментарий диспетчера или инженера",
+            "default": "",
+            "examples": [
+              "Назначена аварийная бригада №2"
+            ]
+          },
+          "defects": {
+            "items": {
+              "$ref": "#/components/schemas/DefectItem"
+            },
+            "type": "array",
+            "title": "Defects",
+            "description": "Список дефектов из акта осмотра"
+          },
+          "expert_opinion": {
+            "$ref": "#/components/schemas/LLMRecommendation",
+            "description": "Заключение и рекомендации эксперта"
+          },
+          "photo_url": {
+            "type": "string",
+            "title": "Photo Url",
+            "description": "URL или путь к исходному/итоговому фото",
+            "examples": [
+              "/static/uploads/insp_1731481234_orig.jpg"
+            ]
+          },
+          "final_photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Photo Url",
+            "description": "URL итогового фото после выполнения ремонта"
+          }
+        },
+        "type": "object",
+        "required": [
+          "equipment_id",
+          "expert_opinion",
+          "photo_url"
+        ],
+        "title": "ReportCreate"
+      },
+      "ReportResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Уникальный номер акта осмотра",
+            "examples": [
+              "act_20261113_001"
+            ]
+          },
+          "equipment_id": {
+            "type": "string",
+            "title": "Equipment Id",
+            "description": "ID агрегата",
+            "examples": [
+              "pump_station_3"
+            ]
+          },
+          "equipment_name": {
+            "type": "string",
+            "title": "Equipment Name",
+            "description": "Наименование агрегата",
+            "examples": [
+              "Насос сетевой 1Д1250-125"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "description": "Дата и время составления акта",
+            "examples": [
+              "2026-11-13T10:20:00Z"
+            ]
+          },
+          "repair_status": {
+            "$ref": "#/components/schemas/RepairStatus",
+            "description": "Текущий статус выполнения ремонта",
+            "examples": [
+              "pending"
+            ]
+          },
+          "dispatcher_notes": {
+            "type": "string",
+            "title": "Dispatcher Notes",
+            "description": "Заметки диспетчера",
+            "default": ""
+          },
+          "defects_count": {
+            "type": "integer",
+            "title": "Defects Count",
+            "description": "Количество зафиксированных дефектов",
+            "examples": [
+              2
+            ]
+          },
+          "defects": {
+            "items": {
+              "$ref": "#/components/schemas/DefectItem"
+            },
+            "type": "array",
+            "title": "Defects",
+            "description": "Список дефектов"
+          },
+          "expert_opinion": {
+            "$ref": "#/components/schemas/LLMRecommendation",
+            "description": "Рекомендации эксперта ТОиР"
+          },
+          "photo_url": {
+            "type": "string",
+            "title": "Photo Url",
+            "description": "URL исходного фото осмотра"
+          },
+          "final_photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Photo Url",
+            "description": "URL итогового фото после ремонта"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "equipment_id",
+          "equipment_name",
+          "created_at",
+          "repair_status",
+          "defects_count",
+          "defects",
+          "expert_opinion",
+          "photo_url"
+        ],
+        "title": "ReportResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

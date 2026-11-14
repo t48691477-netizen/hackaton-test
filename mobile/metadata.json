@@ -1,0 +1,6 @@
+{
+  "name": "ПромСкан Mobile",
+  "description": "Промышленный инспектор оборудования КСТ Энерго: сканирование QR, видеоанализ дефектов и управление заявками на ремонт.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
