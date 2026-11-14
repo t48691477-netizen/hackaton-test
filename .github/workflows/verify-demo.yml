@@ -1,0 +1,20 @@
+name: verify-demo
+
+# Проверяет, что мок-бэкенд отвечает по контракту docs/API.md.
+# Не собирает Android: сборка живёт в отдельном workflow.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Contract check (mock backend)
+        run: python tools/verify_demo.py

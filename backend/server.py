@@ -44,7 +44,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 # Консоль Windows часто в cp1251: без этого печать падала на любом символе.
 for _stream in (sys.stdout, sys.stderr):
@@ -242,8 +242,10 @@ MOTTEL_PROMPT = """Ты — Моттэл, инженер-ассистент пр
 
 
 def normalize_equipment_id(raw):
-    match = re.search(r"([A-Z][A-Z0-9]{1,15}-\d{1,6})", (raw or "").upper())
-    return match.group(1) if match else ((raw or "").strip().upper()[:48])
+    # QR часто содержит ссылку: пробелы и дефисы в ней приходят как %20 и %2D.
+    raw = unquote(raw or "")
+    match = re.search(r"([A-Z][A-Z0-9]{1,15}-\d{1,6})", raw.upper())
+    return match.group(1) if match else (raw.strip().upper()[:48])
 
 
 # ---------------------------------------------------------------- LLM (live)
