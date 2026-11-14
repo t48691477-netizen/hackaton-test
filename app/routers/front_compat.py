@@ -118,6 +118,8 @@ except Exception:
 IMGSZ = 640
 _infer_lock = threading.Lock()
 _oil_model = None
+_unified_model = None
+_unified_tried = False
 _eq_cache: dict = {}
 _KIND = {
     "corrosion": ("Коррозия", "Зачистить поражённую поверхность, нанести антикоррозионное покрытие.", "Воздействие влаги и разрушение защитного покрытия"),
@@ -127,8 +129,35 @@ _KIND = {
 _SEV_RANK = {"low": 0, "medium": 1, "high": 2}
 
 
+def _kind_of(name: str):
+    n = name.strip().lower()
+    if n == "good weld":
+        return None
+    if "rust" in n or "corros" in n:
+        return "corrosion"
+    if "oil" in n:
+        return "oil"
+    return "crack"
+
+
+def _unified():
+    global _unified_model, _unified_tried
+    if not _unified_tried:
+        _unified_tried = True
+        p = settings.UNIFIED_LOCAL_PATH
+        if p.exists():
+            try:
+                from ultralytics import YOLO
+                _unified_model = YOLO(str(p), task="detect")
+            except Exception as exc:
+                print(f"[front_compat] unified model: {exc}")
+    return _unified_model
+
+
 def _models():
     global _oil_model
+    if _unified() is not None:
+        return None, None, None
     from app.services.model_loader import model_loader
     c = model_loader.load_corrosion_model()
     w = model_loader.load_welding_model()
@@ -144,7 +173,7 @@ def warm_up():
     try:
         import numpy as np
         img = np.zeros((480, 640, 3), np.uint8)
-        for m in _models():
+        for m in (_unified(),) + _models():
             if m is not None:
                 m.predict(img, imgsz=IMGSZ, half=_HALF, device=_DEV, verbose=False)
     except Exception as exc:
@@ -152,32 +181,38 @@ def warm_up():
 
 
 def _run(model, img, conf, kind, skip, node_id):
-    r = model.predict(img, conf=conf, imgsz=IMGSZ, half=_HALF, device=_DEV, verbose=False, max_det=15)[0]
+    onnx = model is _unified_model
+    r = model.predict(img, conf=conf, imgsz=IMGSZ, half=False if onnx else _HALF, device="cpu" if onnx else _DEV, verbose=False, max_det=15)[0]
     if r.boxes is None or len(r.boxes) == 0:
         return []
     bx = r.boxes.xyxyn.cpu().numpy()
     cf = r.boxes.conf.cpu().numpy()
     cl = r.boxes.cls.cpu().numpy().astype(int)
     polys = r.masks.xyn if r.masks is not None else None
-    title, rec, _ = _KIND[kind]
     out = []
     for i in range(len(bx)):
         if r.names[int(cl[i])] in skip:
             continue
+        kind_i = kind or _kind_of(r.names[int(cl[i])])
+        if kind_i is None:
+            continue
+        title, rec, _ = _KIND[kind_i]
         poly = None
         if polys is not None and i < len(polys) and len(polys[i]) >= 3:
             step = max(1, len(polys[i]) // 40)
             poly = [[round(float(x), 4), round(float(y), 4)] for x, y in polys[i][::step]]
         c = float(cf[i])
         out.append({
-            "id": f"{kind}-{i + 1}", "label": title, "confidence": round(c, 3), "severity": _sev(c),
+            "id": f"{kind_i}-{i + 1}", "label": title, "confidence": round(c, 3), "severity": _sev(c),
             "bbox": [round(max(0.0, min(1.0, float(v))), 4) for v in bx[i]], "polygon": poly,
-            "node_id": node_id, "source_model": kind, "recommendation": rec,
+            "node_id": node_id, "source_model": kind_i, "recommendation": rec,
         })
     return out
 
 
 def _model_names() -> dict:
+    if _unified_model is not None:
+        return {"all": settings.UNIFIED_LOCAL_PATH.stem}
     return {
         "corrosion": settings.CORROSION_LOCAL_PATH.stem,
         "crack": settings.WELDING_LOCAL_PATH.stem,
@@ -210,7 +245,10 @@ def inspect(file: UploadFile = File(...), equipment_id: str = Form(...)):
     node_id = eq.components[0].id if eq and eq.components else None
     corr, weld, oil = _models()
     out = []
+    uni = _unified()
     with _infer_lock:
+        if uni is not None:
+            out += _run(uni, img, 0.35, None, set(), node_id)
         if corr is not None:
             out += _run(corr, img, 0.35, "corrosion", {"car"}, node_id)
         if weld is not None:
