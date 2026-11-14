@@ -269,6 +269,7 @@ fun ScannerScreen(
 
     if (uiState.showManualIdDialog) {
         ManualEquipmentIdDialog(
+            options = uiState.equipmentOptions,
             onDismiss = { viewModel.setShowManualIdDialog(false) },
             onConfirm = { id -> viewModel.loadEquipment(id) }
         )

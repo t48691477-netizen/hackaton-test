@@ -143,6 +143,10 @@ class PromScanRepository(
         }
     }
 
+    suspend fun getEquipmentList(): ApiResult<List<EquipmentDto>> {
+        return safeCall { api.getEquipmentList() }
+    }
+
     suspend fun inspectFrame(
         jpegBytes: ByteArray,
         equipmentId: String

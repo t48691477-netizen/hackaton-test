@@ -364,6 +364,7 @@ fun DetailedInspectionSheet(
 
 @Composable
 fun ManualEquipmentIdDialog(
+    options: List<EquipmentDto>,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
@@ -380,6 +381,19 @@ fun ManualEquipmentIdDialog(
             )
         },
         text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { item ->
+                val itemId = item.id.orEmpty()
+                TextButton(
+                    onClick = { onConfirm(itemId) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                ) {
+                    Text(
+                        text = (item.name ?: itemId) + " · " + itemId,
+                        color = KstColors.Accent
+                    )
+                }
+            }
             OutlinedTextField(
                 value = inputId,
                 onValueChange = { inputId = it },
@@ -394,6 +408,7 @@ fun ManualEquipmentIdDialog(
                     .fillMaxWidth()
                     .testTag("manual_equipment_id_input")
             )
+            }
         },
         confirmButton = {
             PrimaryActionButton(

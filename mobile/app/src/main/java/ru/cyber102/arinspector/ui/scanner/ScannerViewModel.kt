@@ -35,6 +35,7 @@ data class ScannerUiState(
     val showDetailedSheet: Boolean = false,
     val isCreatingReport: Boolean = false,
     val showManualIdDialog: Boolean = false,
+    val equipmentOptions: List<EquipmentDto> = emptyList(),
     val showCreateReportDialog: Boolean = false,
     val snackbarMessage: String? = null,
     val analysisIntervalSec: Int = SettingsStore.DEFAULT_INTERVAL_SEC
@@ -263,6 +264,14 @@ class ScannerViewModel(
 
     fun setShowManualIdDialog(show: Boolean) {
         _uiState.update { it.copy(showManualIdDialog = show) }
+        if (show) {
+            viewModelScope.launch {
+                val result = repository.getEquipmentList()
+                if (result is ApiResult.Success) {
+                    _uiState.update { it.copy(equipmentOptions = result.data) }
+                }
+            }
+        }
     }
 
     fun setShowCreateReportDialog(show: Boolean, noFrameMessage: String? = null) {
