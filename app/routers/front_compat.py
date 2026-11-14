@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.services.detector import defect_detector
+from app.services import mailer
 from app.services.llm_expert import llm_expert_service
 from app.services.storage import storage_service
 
@@ -343,3 +344,25 @@ def patch_status(report_id: str, body: StatusIn):
             rep["repair_comment"] = body.comment
         _save(items)
         return rep
+
+_EMAIL_RE = r"^[^@\s<>,;\"']{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,}$"
+
+
+class AccessKeyMail(BaseModel):
+    to: str = Field(pattern=_EMAIL_RE, max_length=254)
+    full_name: str = Field(min_length=1, max_length=120, pattern=r"^[^\r\n]+$")
+    role: str = Field(min_length=1, max_length=60, pattern=r"^[^\r\n]+$")
+    access_key: str = Field(min_length=6, max_length=32, pattern=r"^[A-Za-z0-9-]+$")
+
+
+@router.post("/mail/access-key")
+def send_access_key_mail(body: AccessKeyMail):
+    try:
+        message_id = mailer.send_access_key(body.to, body.full_name, body.role, body.access_key)
+    except mailer.MailNotConfigured as exc:
+        raise HTTPException(503, str(exc))
+    except mailer.MailRateLimited as exc:
+        raise HTTPException(429, str(exc))
+    except mailer.MailDeliveryError as exc:
+        raise HTTPException(502, str(exc))
+    return {"status": "sent", "message_id": message_id}
