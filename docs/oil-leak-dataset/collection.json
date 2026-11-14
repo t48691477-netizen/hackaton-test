@@ -1,0 +1,13 @@
+{
+  "target": 70,
+  "accepted_images": 3,
+  "shortfall": 67,
+  "annotations": "not_created",
+  "download_location": "yollo-ML",
+  "image_files": [
+    "transformer-leaking-pole-mounted.jpg",
+    "engine-oil-leaks-mustad-marine.jpg",
+    "gti-6-gearbox-oil-leak.jpg"
+  ],
+  "notes": "Visually reviewed and individually license-attributed photographs only. No object-detection labels were created."
+}

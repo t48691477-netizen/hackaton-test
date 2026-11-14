@@ -1,0 +1,53 @@
+[
+  {
+    "filename": "transformer-leaking-pole-mounted.jpg",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/9/99/Leaking_pole_mounted_transformer.jpg",
+    "source_page": "https://commons.wikimedia.org/wiki/File:Leaking_pole_mounted_transformer.jpg",
+    "license": "CC BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/",
+    "license_evidence": "Wikimedia Commons file page identifies Bidgee as author, states the photo appears to show coolant (oil) leaking from the transformer, and publishes it under CC BY 3.0.",
+    "author": "Bidgee",
+    "equipment": "Pole-mounted power distribution transformer",
+    "oil_evidence": "The Commons description identifies visible coolant (oil) leaking from the side; the photograph shows dark runoff on the transformer casing.",
+    "visual_review": "Accepted after full-size image review and verification of the Commons description and license. Original file, unmodified.",
+    "width": 997,
+    "height": 1500,
+    "format": "JPEG",
+    "bytes": 870115,
+    "sha256": "8ffdefcf399e0df1218609fcbd674b0b73871871a6f8d40dd03f0362f0266470"
+  },
+  {
+    "filename": "engine-oil-leaks-mustad-marine.jpg",
+    "source_url": "https://live.staticflickr.com/65535/51947350724_3a50a877f4_b.jpg",
+    "source_page": "https://www.flickr.com/photos/136938983@N07/51947350724",
+    "license": "Public Domain Mark 1.0",
+    "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "license_evidence": "\"Engine oil leaks\" by MUSTAD MARINE is marked with Public Domain Mark 1.0. To view the terms, visit https://creativecommons.org/publicdomain/mark/1.0/.",
+    "author": "MUSTAD MARINE",
+    "equipment": "Marine diesel engine",
+    "oil_evidence": "Source title identifies engine oil leaks; full-size photo shows visible dark, wet oil residue around engine joints and fasteners.",
+    "visual_review": "Accepted after full-size image review. Public Domain Mark record from Openverse links to Flickr source.",
+    "width": 1024,
+    "height": 461,
+    "format": "JPEG",
+    "bytes": 135809,
+    "sha256": "41de66ff3fc7cc97b0c3b16f49e0f9b3b0bdf8bcd4b12e8bc99f05af5da814bb"
+  },
+  {
+    "filename": "gti-6-gearbox-oil-leak.jpg",
+    "source_url": "https://live.staticflickr.com/124/417418906_b2b223a3d3_b.jpg",
+    "source_page": "https://www.flickr.com/photos/51609867@N00/417418906",
+    "license": "CC BY-SA 2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "license_evidence": "\"GTi-6 Gearbox Oil Leak\" by anderoo is licensed under CC BY-SA 2.0. To view a copy of this license, visit https://creativecommons.org/licenses/by-sa/2.0/.",
+    "author": "anderoo",
+    "equipment": "Automotive gearbox",
+    "oil_evidence": "Source title identifies gearbox oil leak; full-size photo shows dark oily deposits along casing seams and adjacent joint surfaces.",
+    "visual_review": "Accepted after full-size image review. CC BY-SA 2.0 record from Openverse links to Flickr source.",
+    "width": 773,
+    "height": 1024,
+    "format": "JPEG",
+    "bytes": 334800,
+    "sha256": "fe92465dc4b605d2f2a9cf5b48239f6266a01b2000096f13db11a049bdac1192"
+  }
+]
