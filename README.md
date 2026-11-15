@@ -47,7 +47,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | `TOIR_ACCESS_KEY_HASH` | хеш ключа доступа |
 | `LOGIN_FP_SECRET` | обязательный серверный секрет HMAC-отпечатков для входа по PostgreSQL |
 | `TOIR_CORS_ORIGINS` | разрешённые источники для веб-панели |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | отправка писем с ключами |
+| `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | отправка писем с ключами через Resend; sender/domain должен быть подтверждён в Resend |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | резервная отправка писем через SMTP, если Resend не настроен |
 | `OLLAMA_MODEL`, `OLLAMA_URL` | локальная LLM для экспертного заключения; URL по умолчанию `http://127.0.0.1:11434` |
 | `GEMINI_API_KEY` | Gemini после Ollama; при отсутствии/ошибке используется rule-based fallback |
 | `LLM_MODEL` | модель Gemini; по умолчанию `gemini-2.5-flash` |

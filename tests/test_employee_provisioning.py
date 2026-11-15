@@ -252,7 +252,8 @@ def _payload(**overrides):
     )
 
 
-def test_create_normalizes_fields_and_orders_insert_credential_mail_then_state():
+def test_create_normalizes_fields_and_orders_insert_credential_mail_then_state(monkeypatch):
+    monkeypatch.setattr("app.services.mailer.current_provider", lambda: "resend")
     events = []
     employees = ProvisioningEmployeesPool(events=events)
     auth = ProvisioningAuthService(events)
@@ -280,7 +281,7 @@ def test_create_normalizes_fields_and_orders_insert_credential_mail_then_state()
     ]
     assert result.account.email == "ivan@example.test"
     assert result.invitation.status == "sent"
-    assert result.invitation.provider == "smtp"
+    assert result.invitation.provider == "resend"
     assert result.invitation.sent_at.endswith("Z")
     assert "access_key" not in result.model_dump()
     assert "key_hash" not in result.model_dump()
@@ -455,7 +456,7 @@ def test_create_route_returns_public_response_only(monkeypatch):
             "account": account,
             "invitation": {
                 "status": "sent",
-                "provider": "smtp",
+                "provider": "resend",
                 "email": account.email,
                 "sent_at": "2026-11-15T10:30:00Z",
             },
@@ -526,7 +527,7 @@ def test_rotation_route_maps_inactive_and_returns_no_access_key(monkeypatch):
             "account": account,
             "invitation": {
                 "status": "sent",
-                "provider": "smtp",
+                "provider": "resend",
                 "email": account.email,
                 "sent_at": "2026-11-15T10:30:00Z",
             },

@@ -45,7 +45,7 @@ class EmployeeCreateRequest(BaseModel):
 
 class EmployeeInvitationResponse(BaseModel):
     status: Literal["not_sent", "sent", "failed"]
-    provider: Literal["smtp", "gmail", "mock"] | None
+    provider: Literal["resend", "smtp", "gmail", "mock"] | None
     email: str
     sent_at: str | None = None
 

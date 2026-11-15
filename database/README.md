@@ -13,6 +13,7 @@
 - `sql/005_measurement_views.sql` — представления для будущих API-запросов: статус партий, измерения по оборудованию и последнее значение по каналу.
 - `sql/employees/001_schema.sql` — сотрудники и последнее состояние приглашения; база `promscan_employees`.
 - `sql/employees/002_invitation_states.sql` — убирает устаревшее состояние `queued`; база `promscan_employees`.
+- `sql/employees/003_resend_provider.sql` — разрешает provider `resend`; база `promscan_employees`.
 - `sql/tasks/001_schema.sql` — акты осмотра/задачи и контролируемый жизненный цикл; база `promscan_tasks`.
 - `sql/credentials/001_schema.sql` — базовая схема хешей ключей доступа, серверных сессий и одноразовых кодов; база `promscan_credentials`.
 - `sql/credentials/002_key_salt_and_login_audit.sql` — additive-миграция ранее созданной credentials-схемы: добавляет nullable `key_salt`, журнал попыток входа и отзыв сессий при смене соли/хеша.
@@ -39,6 +40,7 @@ createdb promscan_credentials
 
 psql -v ON_ERROR_STOP=1 -d promscan_employees -f database/sql/employees/001_schema.sql
 psql -v ON_ERROR_STOP=1 -d promscan_employees -f database/sql/employees/002_invitation_states.sql
+psql -v ON_ERROR_STOP=1 -d promscan_employees -f database/sql/employees/003_resend_provider.sql
 psql -v ON_ERROR_STOP=1 -d promscan_tasks -f database/sql/tasks/001_schema.sql
 psql -v ON_ERROR_STOP=1 -d promscan_credentials -f database/sql/credentials/001_schema.sql
 psql -v ON_ERROR_STOP=1 -d promscan_credentials -f database/sql/credentials/002_key_salt_and_login_audit.sql
@@ -83,7 +85,7 @@ VITE_USE_MOCK_API=false
 
 После изменения переменных перезапустите Vite. `VITE_USE_MOCK_API=false` переключает `equipment`, `inspect` и `reports` на backend; `Users` и вход остаются mock до отдельной frontend-интеграции с `/api/users` и `/api/auth/*`.
 
-`GET/POST /api/users` читает и создаёт сотрудников; `POST /api/users/{employee_id}/access` вращает access key; `DELETE` деактивирует сотрудника. Никогда не возвращайте `key_hash`, `key_salt`, fingerprints, `code_hash`, `session_token_hash` или plaintext ключи. Создание и ротация отправляют ключ только через серверный SMTP; trigger credentials отзывает активные сессии при смене ключа.
+`GET/POST /api/users` читает и создаёт сотрудников; `POST /api/users/{employee_id}/access` вращает access key; `DELETE` деактивирует сотрудника. Никогда не возвращайте `key_hash`, `key_salt`, fingerprints, `code_hash`, `session_token_hash` или plaintext ключи. Создание и ротация отправляют ключ через Resend API, если заданы `RESEND_API_KEY` и проверенный `RESEND_FROM_EMAIL`; иначе используется настроенный SMTP. Trigger credentials отзывает активные сессии при смене ключа.
 
 Рекомендуется создать отдельную роль PostgreSQL для каждой базы и выдать backend только необходимые права на соответствующую DSN. Не давайте frontend-проекту ни одной DSN и не используйте одну суперпользовательскую роль в приложении.
 

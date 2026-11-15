@@ -23,6 +23,7 @@ from app.services.employees import EmployeeService
 ROOT = Path(__file__).resolve().parents[1]
 EMPLOYEES_SCHEMA = ROOT / "database/sql/employees/001_schema.sql"
 EMPLOYEES_MIGRATION_002 = ROOT / "database/sql/employees/002_invitation_states.sql"
+EMPLOYEES_MIGRATION_003 = ROOT / "database/sql/employees/003_resend_provider.sql"
 CREDENTIALS_SCHEMA = ROOT / "database/sql/credentials/001_schema.sql"
 CREDENTIALS_MIGRATION_002 = ROOT / "database/sql/credentials/002_key_salt_and_login_audit.sql"
 CREDENTIALS_MIGRATION_003 = ROOT / "database/sql/credentials/003_enforce_key_salt.sql"
@@ -82,6 +83,7 @@ def auth_test_pools():
         with psycopg.connect(employees_dsn, autocommit=True) as conn:
             conn.execute(EMPLOYEES_SCHEMA.read_text(encoding="utf-8"))
             conn.execute(EMPLOYEES_MIGRATION_002.read_text(encoding="utf-8"))
+            conn.execute(EMPLOYEES_MIGRATION_003.read_text(encoding="utf-8"))
         yield PostgresPool(credentials_dsn, "test credentials"), PostgresPool(
             employees_dsn, "test employees"
         )

@@ -43,6 +43,7 @@ psql -v ON_ERROR_STOP=1 -d promscan_tasks -f database/sql/tasks/001_schema.sql
 psql -v ON_ERROR_STOP=1 -d promscan_tasks -f database/sql/tasks/002_rejected_status.sql
 psql -v ON_ERROR_STOP=1 -d promscan_employees -f database/sql/employees/001_schema.sql
 psql -v ON_ERROR_STOP=1 -d promscan_employees -f database/sql/employees/002_invitation_states.sql
+psql -v ON_ERROR_STOP=1 -d promscan_employees -f database/sql/employees/003_resend_provider.sql
 psql -v ON_ERROR_STOP=1 -d promscan_credentials -f database/sql/credentials/001_schema.sql
 psql -v ON_ERROR_STOP=1 -d promscan_credentials -f database/sql/credentials/002_key_salt_and_login_audit.sql
 psql -v ON_ERROR_STOP=1 -d promscan_credentials -f database/sql/credentials/003_enforce_key_salt.sql
@@ -93,6 +94,8 @@ $env:DATABASE_TASKS_URL = "postgresql://promscan_tasks:password@127.0.0.1:5432/p
 $env:DATABASE_EMPLOYEES_URL = "postgresql://promscan_employees:password@127.0.0.1:5432/promscan_employees"
 $env:DATABASE_CREDENTIALS_URL = "postgresql://promscan_credentials:password@127.0.0.1:5432/promscan_credentials"
 $env:LOGIN_FP_SECRET = "<random secret from the deployment secret manager>"
+$env:RESEND_API_KEY = "<Resend API key from the deployment secret manager>"
+$env:RESEND_FROM_EMAIL = "PromScan <access@your-verified-domain.example>"
 $env:TOIR_ACCESS_KEY_HASH = "<Argon2id PHC hash for the legacy single account, if used>"
 $env:TOIR_DISABLE_DOCS = "true"
 $env:TOIR_CORS_ORIGINS = ""
@@ -118,11 +121,18 @@ employee there also requires a distinct `DATABASE_EMPLOYEES_URL`.
 The credentials database contains no seeded users or access keys. The service
 supports `/api/auth/login`, `/api/auth/me`, `/api/auth/logout`, and protected
 `/api/users` list, create, access-key rotation, and deactivation operations.
-Creation and rotation send keys synchronously through SMTP; configure
-`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD`, and
-`SMTP_FROM` in the server secret manager. Employee creation inserts the employee
-first, then its Argon2id credential, then sends mail. Credential/database or mail
-failure triggers compensating deletion of records created for that request.
+Creation and rotation send access keys synchronously using Resend when
+`RESEND_API_KEY` and `RESEND_FROM_EMAIL` are both configured. The sender address
+must use a domain verified in the Resend account. A successful API response
+confirms provider acceptance, not inbox delivery; delivery webhooks are not
+configured. Keep the API key in the server secret manager; do not send it to the
+browser or commit it. If Resend is not configured,
+the mailer falls back to SMTP using `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`,
+`SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM`. Employee creation inserts the
+employee first, then its Argon2id credential, then sends mail. Credential/database
+or mail failure triggers compensating deletion of records created for that request.
+Resend must be configured with both `RESEND_API_KEY` and `RESEND_FROM_EMAIL`; a
+partial configuration is rejected rather than falling back to SMTP.
 Rotation changes the credential (revoking active sessions by trigger) before
 mail delivery and restores the prior credential if delivery fails; restoration
 also invalidates sessions issued before the attempt. These operations span

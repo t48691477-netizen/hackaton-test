@@ -183,11 +183,12 @@ class EmployeeService:
             raise
 
         sent_at = datetime.now(timezone.utc)
+        mail_provider = mailer.current_provider()
         try:
             self._set_invitation(
                 employee_id,
                 status_value="sent",
-                provider="smtp",
+                provider=mail_provider,
                 sent_at=sent_at,
             )
         except Exception as exc:
@@ -201,7 +202,7 @@ class EmployeeService:
             invitation=self._invitation(
                 employee.email,
                 status_value="sent",
-                provider="smtp",
+                provider=mail_provider,
                 sent_at=sent_at,
             ),
         )
@@ -230,6 +231,7 @@ class EmployeeService:
             )
 
         rotated = self.auth_service.rotate_employee_access(normalized_id)
+        mail_provider = mailer.current_provider()
         try:
             self._send_access_key(
                 employee.email,
@@ -247,7 +249,7 @@ class EmployeeService:
                 self._set_invitation(
                     normalized_id,
                     status_value="failed",
-                    provider="smtp",
+                    provider=mail_provider,
                     error=type(exc).__name__,
                 )
             except Exception as compensation_exc:
@@ -258,7 +260,7 @@ class EmployeeService:
         self._set_invitation(
             normalized_id,
             status_value="sent",
-            provider="smtp",
+            provider=mail_provider,
             sent_at=sent_at,
         )
         return EmployeeProvisionResponse(
@@ -266,7 +268,7 @@ class EmployeeService:
             invitation=self._invitation(
                 employee.email,
                 status_value="sent",
-                provider="smtp",
+                provider=mail_provider,
                 sent_at=sent_at,
             ),
         )
