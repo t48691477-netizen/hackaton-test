@@ -25,7 +25,6 @@ import {
   SwitchCamera,
   Upload,
   Wrench,
-  Zap,
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import {
@@ -35,7 +34,6 @@ import {
   fetchTelemetry,
   inspectImage,
   requestDetailedAnalysis,
-  triggerTelemetryAnomaly,
 } from '../lib/api';
 import {
   EMPLOYEES_CHANGED_EVENT,
@@ -735,7 +733,6 @@ function TelemetryWidget({
 }) {
   const [telemetry, setTelemetry] = useState<TelemetryData | null>(initialTelemetry ?? null);
   const [loading, setLoading] = useState(!initialTelemetry);
-  const [triggering, setTriggering] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'vibration' | 'temperature'>('all');
 
   useEffect(() => {
@@ -762,18 +759,6 @@ function TelemetryWidget({
       clearInterval(interval);
     };
   }, [equipmentId]);
-
-  const handleTriggerAnomaly = async () => {
-    setTriggering(true);
-    try {
-      const data = await triggerTelemetryAnomaly(equipmentId);
-      setTelemetry(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setTriggering(false);
-    }
-  };
 
   if (!telemetry && loading) {
     return (
@@ -918,26 +903,6 @@ function TelemetryWidget({
             </div>
           );
         })}
-      </div>
-
-      <div className="mt-3">
-        <button
-          type="button"
-          onClick={() => void handleTriggerAnomaly()}
-          disabled={triggering}
-          className={`inline-flex w-full items-center justify-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors ${
-            isAlarm
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400'
-              : 'border-warn/30 bg-warn/10 text-warn hover:bg-warn/20'
-          }`}
-        >
-          <Zap className="h-3.5 w-3.5" aria-hidden="true" />
-          {triggering
-            ? 'Симуляция…'
-            : isAlarm
-            ? 'Восстановить нормальный режим'
-            : '⚡ Спровоцировать аномалию (демо)'}
-        </button>
       </div>
     </section>
   );
