@@ -233,11 +233,11 @@ describe('API-клиент: HTTP-контракт', () => {
     await api.fetchReportById('report/a b');
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      'https://api.example/api/equipment',
-      'https://api.example/api/equipment/pump%2Fa%20b',
-      'https://api.example/api/reports?status=in_progress',
-      'https://api.example/api/reports',
-      'https://api.example/api/reports/report%2Fa%20b',
+      'https://api.example/front/api/equipment',
+      'https://api.example/front/api/equipment/pump%2Fa%20b',
+      'https://api.example/front/api/reports?status=in_progress',
+      'https://api.example/front/api/reports',
+      'https://api.example/front/api/reports/report%2Fa%20b',
     ]);
     for (const [, init] of fetchMock.mock.calls) {
       expect(init?.method ?? 'GET').toBe('GET');
@@ -253,7 +253,7 @@ describe('API-клиент: HTTP-контракт', () => {
     void created_at;
     void updated_at;
 
-    expect(url).toBe('https://api.example/api/equipment');
+    expect(url).toBe('https://api.example/front/api/equipment');
     expect(init?.method).toBe('POST');
     expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
     expect(JSON.parse(init?.body as string)).toEqual(payload);
@@ -266,7 +266,7 @@ describe('API-клиент: HTTP-контракт', () => {
     const [url, init] = fetchMock.mock.calls[0];
     const form = init?.body as FormData;
 
-    expect(url).toBe('https://api.example/api/inspect');
+    expect(url).toBe('https://api.example/front/api/inspect');
     expect(init?.method).toBe('POST');
     expect(form.get('equipment_id')).toBe(MOCK_EQUIPMENT.id);
     expect(form.get('file')).toMatchObject({ name: 'frame.jpg', type: 'image/jpeg', size: image.size });
@@ -287,7 +287,7 @@ describe('API-клиент: HTTP-контракт', () => {
     const [url, init] = fetchMock.mock.calls[0];
     const form = init?.body as FormData;
 
-    expect(url).toBe('https://api.example/api/reports');
+    expect(url).toBe('https://api.example/front/api/reports');
     expect(init?.method).toBe('POST');
     expect(form.get('equipment_id')).toBe(input.equipmentId);
     expect(form.get('inspection_id')).toBe(input.inspectionId);
@@ -308,7 +308,7 @@ describe('API-клиент: HTTP-контракт', () => {
     await api.updateReportStatus('report-1042', 'closed', 'Работы выполнены.');
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://api.example/api/reports/report-1042/status');
+    expect(url).toBe('https://api.example/front/api/reports/report-1042/status');
     expect(init?.method).toBe('PATCH');
     expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
     expect(JSON.parse(init?.body as string)).toEqual({

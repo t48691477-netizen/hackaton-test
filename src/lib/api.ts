@@ -22,7 +22,7 @@ import {
   type ReportStatus,
   type TelemetryData,
 } from './inspection';
-import { getServerUrl } from './serverConfig';
+import { getServerUrl, resolveRequestBase } from './serverConfig';
 import {
   findEmployeeById,
   loadEmployees,
@@ -35,7 +35,8 @@ const ENV_BASE_URL = (
 
 export const API_CONFIG = {
   get baseUrl(): string {
-    return (getServerUrl() ?? ENV_BASE_URL).replace(/\/+$/, '');
+    const url = getServerUrl();
+    return (url ? resolveRequestBase(url) : ENV_BASE_URL).replace(/\/+$/, '');
   },
   get useMock(): boolean {
     if (getServerUrl()) return false;
@@ -191,7 +192,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set('Accept', 'application/json');
 
-  const response = await fetch(`${API_CONFIG.baseUrl}${path}`, {
+  const response = await fetch(`${API_CONFIG.baseUrl}${path.replace(/^\/api\//, '/front/api/')}`, {
     ...init,
     headers,
   });

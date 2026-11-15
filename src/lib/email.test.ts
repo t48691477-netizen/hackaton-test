@@ -33,7 +33,7 @@ describe('sendAccessKeyEmail', () => {
     const result = await sendAccessKeyEmail(input);
 
     expect(result).toMatchObject({ provider: 'smtp', status: 'sent', messageId: '<1@x>' });
-    expect(fetchMock.mock.calls[0][0]).toBe('https://api.test/api/mail/access-key');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.test/front/api/mail/access-key');
     expect(readMockOutbox()).toHaveLength(0);
   });
 

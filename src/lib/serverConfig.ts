@@ -16,6 +16,18 @@ export function normalizeServerUrl(input: string): string | null {
   }
 }
 
+export function resolveRequestBase(url: string): string {
+  if (
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'https:' &&
+    url.startsWith('http:')
+  ) {
+    return '';
+  }
+
+  return url;
+}
+
 export function getServerUrl(): string | null {
   if (typeof window === 'undefined') return null;
 
@@ -56,7 +68,7 @@ export async function checkServer(url: string, timeoutMs = 6000): Promise<boolea
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(`${url}/health`, { signal: controller.signal });
+    const response = await fetch(`${resolveRequestBase(url)}/health`, { signal: controller.signal });
     return response.ok;
   } catch {
     return false;
