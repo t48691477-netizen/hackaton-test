@@ -6,10 +6,13 @@
 
 | Часть | Стек | Где |
 |---|---|---|
-| Веб-панель | React 19, TypeScript, Vite, Tailwind | `src/` (актуальная версия в ветке `newfront`) |
-| Бэкенд | FastAPI, ultralytics YOLO, SQLite | `app/` |
-| Мобильное приложение | Kotlin, Jetpack Compose, CameraX, ML Kit | `mobile/` |
-| Старый Android-клиент «AR-Инспектор» | Kotlin, Compose | `app/src/main/java/` (устаревший, не развивается) |
+| Веб-панель | React 19, TypeScript, Vite, Tailwind | `src/`, `public/` |
+| Бэкенд | FastAPI, ultralytics YOLO ensemble, SQLite / PostgreSQL | `app/` |
+| Мобильное приложение | Kotlin, Jetpack Compose, CameraX, Material 3 | `mobile/` |
+| База данных и миграции | PostgreSQL, схемы, датасет вибраций | `database/` |
+| Тесты | Vitest (122 теста фронта), Pytest (36 тестов бэка) | `tests/`, `src/**/*.test.tsx` |
+| Деплой и инфраструктура | Docker, docker-compose, Caddy | `deploy/` |
+| Архив первой версии | ARCore, ассистент Моттэл, mock-сервер | `legacy/ar_inspector/` |
 
 ```
 Камера (веб или телефон) ─ кадр ─► Бэкенд ─► YOLO: коррозия / сварка / масло ─► дефекты на кадре
@@ -33,7 +36,7 @@ cp .env.production.example .env
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Проверка: `GET http://127.0.0.1:8000/health`. Подробности пайплайна: [`TOIR_PIPELINE.md`](TOIR_PIPELINE.md).
+Проверка: `GET http://127.0.0.1:8000/health`. Подробности пайплайна: [`docs/TOIR_PIPELINE.md`](docs/TOIR_PIPELINE.md).
 
 Настройки в переменных окружения (секреты не коммитить):
 

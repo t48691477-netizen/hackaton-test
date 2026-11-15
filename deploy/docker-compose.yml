@@ -2,8 +2,8 @@ name: toir
 
 x-api-common: &api-common
   build:
-    context: .
-    dockerfile: Dockerfile
+    context: ..
+    dockerfile: deploy/Dockerfile
   restart: unless-stopped
   init: true
   expose:
@@ -57,8 +57,8 @@ services:
     <<: *api-common
     profiles: [cuda]
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile
       args:
         PYTORCH_INDEX_URL: https://download.pytorch.org/whl/cu128
     deploy:
