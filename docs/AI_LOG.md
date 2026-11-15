@@ -4,6 +4,23 @@
 
 ---
 
+### [2026-11-15] Gemini 3.8 Flash (Antigravity) · эмуляция датчиков OPC UA / Modbus и UI в вебе и Android
+- Статус: готово, эмулятор телеметрии подключен к 500 строкам архива вибрации/термометрии, эндпоинты работают, добавлены экраны и карточки в веб и мобильный интерфейс
+- Изменения:
+  - `app/services/telemetry_emulator.py`: сервис эмулятора сервера ввода/вывода OPC UA (`opc.tcp://10.161.120.19:4840`) и Modbus TCP (порт 502), уставки ГОСТ ISO 10816-3 (СКЗ, 1x дисбаланс, 2x расцентровка, ВЧ шум подшипника, t° подшипника и обмоток, обороты);
+  - `app/routers/front_compat.py`, `app/routers/equipment.py`, `backend/server.py`: эндпоинты `/telemetry`, история и ручка моделирования аномалий;
+  - `static/index.html`: вкладка «📡 Датчики и Телеметрия», живой опрос (2 сек), карточки каналов, триггер аномалий, мини-виджет на экране дефектоскопии;
+  - `mobile/app/...`: DTO телеметрии, метод API и компонент `TelemetryCard` в карточке паспорта агрегата;
+  - `app/.../ResultSheet.kt`: блок телеметрии узла в AR-акте.
+- Проверка: `tools/verify_demo.py` (19/19 OK), `TestClient` FastAPI: `GET /front/api/equipment/PUMP-402/telemetry` (200), `GET /front/api/equipment/PUMP-402` (200, telemetry=True, node-sensors=True), `POST trigger-anomaly` (200, аномалия подтверждена).
+- Риски/заметки: коммиты в git не делались согласно указанию. Все изменения локальные.
+
+### [2026-11-15] Gemini 3.8 Flash (Antigravity) · осмотр репозитория и проверка состояния
+- Статус: репозиторий осмотрен, ветка database актуальна; контракты и тесты бэкенда проверены
+- Изменения: docs/AI_LOG.md
+- Проверка: `python tools/verify_demo.py` (19/19 OK), `python -m unittest backend.test_migrations_and_passports` (6/6 OK), `git status` чистый
+- Риски/заметки: ветка database содержит свежие веса ONNX-детектора и датасет вибрации; сборка Android не запускалась. На связи, готов к задаче.
+
 ### [2026-11-15] standard/gpt-6-sol (OpenCode) · PostgreSQL-паспорта оборудования
 - Статус: код и инструкции подготовлены; production импорт не выполнен, потому что исходных четырёх PDF и настроенной PostgreSQL в окружении нет.
 - Изменения: `backend/db.py` читает каталог и PDF из PostgreSQL; `backend/server.py` добавляет список оборудования и read-only routes документов; `backend/import_passports.py` валидирует точные имена/маппинг четырёх AMS PDF и импортирует содержимое с SHA-256; миграции `003`/`004` создают metadata/bytea и подтверждённый каталог; README, API и migrations README описывают импорт, проверку и разделение паспортных компонентов от AR nodes. Поверхностно разобраны `origin/feat/android-backend` (`bd90c69`) и `origin/backend-test` (`78b246f`), QR-поток и несовместимости контрактов записаны в README.

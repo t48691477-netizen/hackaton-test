@@ -163,6 +163,31 @@ fun ResultSheet(
                 }
             }
 
+            equipment.telemetry?.let { telem ->
+                Spacer(Modifier.height(14.dp))
+                HudPanel(
+                    Modifier.fillMaxWidth(),
+                    accent = if (telem.overallStatus == "alarm") HudRed else if (telem.overallStatus == "warning") Indigo else HudGreen
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            MonoLabel("ТЕЛЕМЕТРИЯ (OPC UA / MODBUS)")
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                text = telem.diagnosis,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (telem.overallStatus == "alarm") HudRed else if (telem.overallStatus == "warning") Indigo else HudGreen
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        telem.channels.forEach { ch ->
+                            KeyValueRow(ch.name, "%.2f %s".format(ch.value, ch.unit))
+                            Spacer(Modifier.height(4.dp))
+                        }
+                    }
+                }
+            }
+
             Spacer(Modifier.height(20.dp))
             SectionTitle("01", if (defect == null) "Результат осмотра" else "Обнаруженный дефект")
 

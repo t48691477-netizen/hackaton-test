@@ -19,11 +19,28 @@ data class EquipmentComponent(
     val description: String? = null
 )
 
+data class TelemetryChannel(
+    val id: String = "",
+    val name: String = "",
+    val value: Float = 0f,
+    val unit: String = "",
+    val status: String = "normal"
+)
+
+data class TelemetryData(
+    val diagnosis: String = "Норма",
+    @SerializedName("overall_status")
+    val overallStatus: String = "normal",
+    val rpm: Float = 2950f,
+    val channels: List<TelemetryChannel> = emptyList()
+)
+
 data class Equipment(
     val id: String = "",
     val name: String = "",
     val location: String? = null,
-    val components: List<EquipmentComponent> = emptyList()
+    val components: List<EquipmentComponent> = emptyList(),
+    val telemetry: TelemetryData? = null
 )
 
 data class NormalizedPoint(

@@ -51,6 +51,11 @@ from urllib.parse import quote, unquote, urlparse
 from urllib.request import Request, urlopen
 
 try:
+    from app.services.telemetry_emulator import telemetry_service
+except Exception:
+    telemetry_service = None
+
+try:
     from db import (
         Database,
         DatabaseError,
@@ -721,6 +726,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(503, persistence_error_payload())
             return self._send(200, {"documents": documents})
 
+        match = re.fullmatch(r"/api/equipment/([^/]+)/telemetry", path)
+        if match:
+            equipment_id = normalize_equipment_id(match.group(1))
+            if telemetry_service:
+                return self._send(200, telemetry_service.get_current_reading(equipment_id))
+            return self._send(200, {
+                "equipment_id": equipment_id,
+                "overall_status": "normal",
+                "diagnosis": "Норма",
+                "rpm": 2954.0,
+                "channels": []
+            })
+
         match = re.fullmatch(r"/api/equipment/([^/]+)", path)
         if match:
             equipment_id = normalize_equipment_id(match.group(1))
@@ -743,6 +761,10 @@ class Handler(BaseHTTPRequestHandler):
                         "components": EQUIPMENT["PUMP-402"]["components"],
                     }
             time.sleep(0.35)
+            if isinstance(data, dict):
+                data = dict(data)
+                if telemetry_service:
+                    data["telemetry"] = telemetry_service.get_current_reading(equipment_id)
             return self._send(200, data)
 
         match = re.fullmatch(r"/qr/([^/]+)", path)

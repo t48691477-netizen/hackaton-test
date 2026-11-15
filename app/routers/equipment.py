@@ -3,8 +3,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.routers.auth import require_scan, require_users
 from app.schemas.equipment import EquipmentCreate, EquipmentResponse
 from app.services.storage import storage_service
+from app.services.telemetry_emulator import telemetry_service
 
 router = APIRouter(prefix="/api/equipment", tags=["Equipment (Оборудование и узлы)"])
+
+@router.get(
+    "/{equipment_id}/telemetry",
+    summary="Получить текущую телеметрию датчиков агрегата (OPC UA / Modbus)",
+    description="Снимает текущие значения виброскорости, гармоник 1x/2x, шума и температур с сервера ввода/вывода."
+)
+def get_equipment_telemetry_reading(equipment_id: str):
+    return telemetry_service.get_current_reading(equipment_id)
 
 @router.get(
     "",

@@ -206,6 +206,7 @@
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('inspect')">🔬 Диагностика (AI Инспекция)</button>
     <button class="tab-btn" onclick="switchTab('equipment')">⚙️ Оборудование и узлы</button>
+    <button class="tab-btn" onclick="switchTab('sensors')">📡 Датчики и Телеметрия (OPC UA / Modbus)</button>
     <button class="tab-btn" onclick="switchTab('reports')">📋 Журнал диспетчера (Акты)</button>
   </div>
 
@@ -222,6 +223,21 @@
           </select>
         </div>
         <div id="equipment-context-info" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 14px;"></div>
+
+        <div id="inspect-sensors-preview" style="background:#0b1324; border:1px solid #334155; border-radius:6px; padding:10px 12px; margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:0.75rem; text-transform:uppercase; color:var(--primary); font-weight:700;">📡 Датчики агрегата (Сервер ввода/вывода OPC UA &middot; Modbus)</span>
+            <span id="inspect-sensor-status-badge" class="badge badge-low">Норма</span>
+          </div>
+          <div id="inspect-sensors-mini-grid" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; font-size:0.8rem;">
+            <div><span style="color:var(--text-muted)">СКЗ вибр.:</span> <b id="mini-v-rms">1.02 мм/с</b></div>
+            <div><span style="color:var(--text-muted)">1x (дисбал.):</span> <b id="mini-amp-1x">0.84 мм/с</b></div>
+            <div><span style="color:var(--text-muted)">2x (центр.):</span> <b id="mini-amp-2x">0.22 мм/с</b></div>
+            <div><span style="color:var(--text-muted)">ВЧ шум:</span> <b id="mini-hf">0.10 g</b></div>
+            <div><span style="color:var(--text-muted)">t° подшип.:</span> <b id="mini-bt">62.4 °C</b></div>
+            <div><span style="color:var(--text-muted)">Обороты:</span> <b id="mini-rpm">2963 об/мин</b></div>
+          </div>
+        </div>
 
         <div class="form-group">
           <label>Фотография узла / сварного шва / металлоконструкции:</label>
@@ -414,6 +430,97 @@
     </div>
   </div>
 
+  <!-- TAB 4: SENSORS & TELEMETRY -->
+  <div id="tab-sensors" class="tab-content">
+    <!-- Server Gateway Status Card -->
+    <div class="card" style="border-left: 4px solid var(--success);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div>
+          <h2 style="margin-bottom:4px; display:flex; align-items:center; gap:8px;">
+            <span class="status-pill status-operational"></span>
+            Сервер ввода/вывода (Интеграция OPC UA / Modbus TCP)
+          </h2>
+          <div style="font-size:0.82rem; color:var(--text-muted);">
+            Шлюз сбора телеметрии датчиков вибрации и термометрии &middot; Архив в БД: <b>500 часовых измерений</b>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <span style="font-size:0.8rem; background:#0f172a; border:1px solid #334155; padding:4px 8px; border-radius:4px; font-family:monospace;">
+            OPC UA: opc.tcp://10.161.120.19:4840
+          </span>
+          <span style="font-size:0.8rem; background:#0f172a; border:1px solid #334155; padding:4px 8px; border-radius:4px; font-family:monospace;">
+            Modbus TCP: 502 (Unit 1)
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls & Diagnosis -->
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <label style="margin:0; font-weight:600; color:var(--text);">Агрегат:</label>
+          <select id="telemetry-equipment-select" onchange="onTelemetryEquipmentChange()" style="max-width:260px;">
+            <option value="PUMP-402">PUMP-402 (Центробежный насос №1)</option>
+            <option value="PUMP-118">PUMP-118 (Насос рециркуляции)</option>
+            <option value="VALVE-77">VALVE-77 (Задвижка сетевая)</option>
+          </select>
+          <button class="btn btn-secondary" onclick="pollTelemetryNow()">🔄 Опросить сейчас</button>
+          <button class="btn btn-secondary" style="border-color:#f59e0b; color:#fbbf24;" onclick="triggerAnomaly()">⚡ Смоделировать аномалию</button>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px;">
+          <label style="margin:0; display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" id="telemetry-auto-poll" checked onchange="toggleAutoPoll(this.checked)" style="width:auto;">
+            Живой автоопрос (2 сек)
+          </label>
+        </div>
+      </div>
+
+      <!-- Diagnosis Banner -->
+      <div id="sensor-diag-banner" style="background:#0b1324; border:1px solid #334155; border-radius:8px; padding:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <span style="font-size:0.75rem; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.05em;">Заключение вибродиагностики (ГОСТ ISO 10816-3):</span>
+          <div id="sensor-diag-text" style="font-size:1.15rem; font-weight:700; color:#4ade80; margin-top:2px;">Норма</div>
+        </div>
+        <div>
+          <span id="sensor-overall-badge" class="badge badge-low" style="font-size:0.9rem; padding:6px 14px;">NORMAL</span>
+        </div>
+      </div>
+
+      <!-- Sensor Channels Grid -->
+      <div id="sensor-channels-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-top:16px;">
+        <!-- Channels will be rendered here -->
+      </div>
+    </div>
+
+    <!-- History Trend Table -->
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h2>Архив последних измерений с сервера ввода/вывода (TimescaleDB / Excel)</h2>
+        <button class="btn btn-secondary" onclick="loadTelemetryHistory()">🔄 Обновить архив</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Время замера</th>
+            <th>Обороты</th>
+            <th>СКЗ виброскорости</th>
+            <th>1x (дисбаланс)</th>
+            <th>2x (центровка)</th>
+            <th>ВЧ шум</th>
+            <th>t° подшипника</th>
+            <th>t° статора</th>
+            <th>Диагноз</th>
+          </tr>
+        </thead>
+        <tbody id="telemetry-history-tbody">
+          <tr><td colspan="9" style="text-align:center; color:var(--text-muted);">Загрузка архива...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <script>
     let currentInspection = null;
     let equipmentMap = {};
@@ -425,6 +532,10 @@
       document.getElementById('tab-' + tab).classList.add('active');
       if (tab === 'equipment') loadEquipmentList();
       if (tab === 'reports') loadReports();
+      if (tab === 'sensors') {
+        pollTelemetryNow();
+        loadTelemetryHistory();
+      }
     }
 
     async function checkHealth() {
@@ -727,8 +838,192 @@
       }
     }
 
+    // --- Телеметрия и сервер ввода/вывода (OPC UA / Modbus) ---
+    let autoPollTimer = null;
+
+    async function pollTelemetryNow(forceAnomaly = false) {
+      const select = document.getElementById('telemetry-equipment-select');
+      const eqId = select ? select.value : 'PUMP-402';
+      const endpoint = forceAnomaly
+        ? `/front/api/telemetry/${eqId}/trigger-anomaly`
+        : `/front/api/telemetry/${eqId}`;
+
+      try {
+        const method = forceAnomaly ? 'POST' : 'GET';
+        const res = await fetch(endpoint, { method });
+        if (!res.ok) {
+          // fallback to /api/equipment/:id/telemetry
+          const fb = await fetch(`/api/equipment/${eqId}/telemetry`);
+          const data = await fb.json();
+          renderTelemetryCards(data);
+          renderMiniTelemetry(data);
+          return;
+        }
+        const data = await res.json();
+        renderTelemetryCards(data);
+        renderMiniTelemetry(data);
+      } catch (e) {
+        console.error('Ошибка опроса телеметрии:', e);
+      }
+    }
+
+    function triggerAnomaly() {
+      pollTelemetryNow(true);
+    }
+
+    function onTelemetryEquipmentChange() {
+      pollTelemetryNow();
+      loadTelemetryHistory();
+    }
+
+    function toggleAutoPoll(enabled) {
+      if (autoPollTimer) {
+        clearInterval(autoPollTimer);
+        autoPollTimer = null;
+      }
+      if (enabled) {
+        autoPollTimer = setInterval(() => {
+          // Опрашиваем, если открыта вкладка датчиков или инспекции
+          const sensorsActive = document.getElementById('tab-sensors')?.classList.contains('active');
+          const inspectActive = document.getElementById('tab-inspect')?.classList.contains('active');
+          if (sensorsActive || inspectActive) {
+            pollTelemetryNow();
+          }
+        }, 2000);
+      }
+    }
+
+    function renderTelemetryCards(data) {
+      if (!data || !data.channels) return;
+
+      // Общий диагноз
+      const diagBanner = document.getElementById('sensor-diag-banner');
+      const diagText = document.getElementById('sensor-diag-text');
+      const badge = document.getElementById('sensor-overall-badge');
+
+      if (diagText) diagText.textContent = data.diagnosis || 'Норма';
+      if (badge) {
+        badge.textContent = (data.overall_status || 'NORMAL').toUpperCase();
+        if (data.overall_status === 'alarm') {
+          badge.className = 'badge badge-high';
+          if (diagText) diagText.style.color = '#ef4444';
+          if (diagBanner) diagBanner.style.borderColor = '#ef4444';
+        } else if (data.overall_status === 'warning') {
+          badge.className = 'badge badge-medium';
+          if (diagText) diagText.style.color = '#fbbf24';
+          if (diagBanner) diagBanner.style.borderColor = '#f59e0b';
+        } else {
+          badge.className = 'badge badge-low';
+          if (diagText) diagText.style.color = '#4ade80';
+          if (diagBanner) diagBanner.style.borderColor = '#334155';
+        }
+      }
+
+      // Сетка каналов
+      const grid = document.getElementById('sensor-channels-grid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      data.channels.forEach(ch => {
+        const card = document.createElement('div');
+        const isAlarm = ch.status === 'alarm';
+        const isWarn = ch.status === 'warning';
+        const borderColor = isAlarm ? '#ef4444' : isWarn ? '#f59e0b' : '#334155';
+        const valColor = isAlarm ? '#f87171' : isWarn ? '#fbbf24' : '#38bdf8';
+        const statusBadge = isAlarm
+          ? '<span class="badge badge-high">ТРЕВОГА</span>'
+          : isWarn
+          ? '<span class="badge badge-medium">ПРЕДУПР</span>'
+          : '<span class="badge badge-low">НОРМА</span>';
+
+        card.style.cssText = `background:#0f172a; border:1px solid ${borderColor}; border-radius:6px; padding:12px;`;
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">${ch.location || 'Узел'}</span>
+            ${statusBadge}
+          </div>
+          <div style="font-size:0.9rem; font-weight:600; color:var(--text);">${ch.name}</div>
+          <div style="font-size:1.4rem; font-weight:700; color:${valColor}; margin:6px 0;">
+            ${ch.value} <span style="font-size:0.85rem; color:var(--text-muted);">${ch.unit}</span>
+          </div>
+          <div style="font-size:0.72rem; color:var(--text-muted); border-top:1px dashed #1e293b; padding-top:4px;">
+            ${ch.standard ? `Уставка: ${ch.standard}` : 'Штатный диапазон'}
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function renderMiniTelemetry(data) {
+      if (!data || !data.channels) return;
+      const getVal = id => {
+        const c = data.channels.find(x => x.id === id);
+        return c ? `${c.value} ${c.unit}` : '—';
+      };
+
+      const setT = (elemId, text) => {
+        const el = document.getElementById(elemId);
+        if (el) el.textContent = text;
+      };
+
+      setT('mini-v-rms', getVal('v_rms'));
+      setT('mini-amp-1x', getVal('amp_1x'));
+      setT('mini-amp-2x', getVal('amp_2x'));
+      setT('mini-hf', getVal('hf_noise'));
+      setT('mini-bt', getVal('bearing_temp'));
+      setT('mini-rpm', getVal('shaft_speed_rpm'));
+
+      const badge = document.getElementById('inspect-sensor-status-badge');
+      if (badge) {
+        badge.textContent = data.diagnosis || 'Норма';
+        if (data.overall_status === 'alarm') {
+          badge.className = 'badge badge-high';
+        } else if (data.overall_status === 'warning') {
+          badge.className = 'badge badge-medium';
+        } else {
+          badge.className = 'badge badge-low';
+        }
+      }
+    }
+
+    async function loadTelemetryHistory() {
+      const select = document.getElementById('telemetry-equipment-select');
+      const eqId = select ? select.value : 'PUMP-402';
+      const tbody = document.getElementById('telemetry-history-tbody');
+      if (!tbody) return;
+
+      try {
+        const res = await fetch(`/front/api/telemetry/${eqId}/history?limit=15`);
+        if (!res.ok) return;
+        const list = await res.json();
+        tbody.innerHTML = '';
+        list.forEach(r => {
+          const tr = document.createElement('tr');
+          const isAlarm = r.severity === 'alarm';
+          const isWarn = r.severity === 'warning';
+          const badgeClass = isAlarm ? 'badge-high' : isWarn ? 'badge-medium' : 'badge-low';
+          tr.innerHTML = `
+            <td><code>${r.timestamp.substring(0, 16)}</code></td>
+            <td>${r.rpm} об/мин</td>
+            <td><b>${r.v_rms}</b> мм/с</td>
+            <td>${r.amp_1x} мм/с</td>
+            <td>${r.amp_2x} мм/с</td>
+            <td>${r.hf_noise} g</td>
+            <td>${r.bearing_temp} °C</td>
+            <td>${r.motor_temp} °C</td>
+            <td><span class="badge ${badgeClass}">${r.diagnosis}</span></td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
     // Инициализация при загрузке
     loadEquipmentForSelect();
+    toggleAutoPoll(true);
+    pollTelemetryNow();
   </script>
 </body>
 </html>

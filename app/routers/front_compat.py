@@ -16,6 +16,7 @@ from app.services.detector import defect_detector
 from app.services import mailer
 from app.services.llm_expert import llm_expert_service
 from app.services.storage import storage_service
+from app.services.telemetry_emulator import telemetry_service
 
 router = APIRouter(prefix="/front/api", tags=["Front compat"])
 REPORTS_FILE = settings.DATA_DIR / "front_reports.json"
@@ -47,6 +48,7 @@ def _add_days(date_str: str, days: int) -> str:
 
 
 def _eq(e) -> dict:
+    telem = telemetry_service.get_current_reading(e.id)
     nodes = [
         {
             "id": c.id,
@@ -58,6 +60,20 @@ def _eq(e) -> dict:
         }
         for c in e.components
     ]
+    # Добавляем блок телеметрии датчиков в список узлов
+    sensor_specs = [
+        {"label": ch["name"], "value": str(ch["value"]), "unit": ch["unit"]}
+        for ch in telem.get("channels", [])
+    ]
+    sensor_specs.append({"label": "Диагноз по вибрации", "value": telem.get("diagnosis", "Норма"), "unit": None})
+    sensor_specs.append({"label": "Интеграция", "value": "OPC UA / Modbus TCP", "unit": None})
+
+    nodes.insert(0, {
+        "id": "node-sensors",
+        "name": "📡 Датчики (OPC UA / Modbus)",
+        "specs": sensor_specs,
+    })
+
     return {
         "id": e.id,
         "name": e.name,
@@ -71,8 +87,13 @@ def _eq(e) -> dict:
         "service_life_years": 10,
         "last_maintenance_at": e.last_maintenance_date,
         "next_maintenance_at": _add_days(e.last_maintenance_date, 180),
-        "specs": [{"label": "Возраст узлов", "value": e.component_age, "unit": None}],
+        "specs": [
+            {"label": "Возраст узлов", "value": e.component_age, "unit": None},
+            {"label": "Статус телеметрии", "value": telem.get("diagnosis", "Норма"), "unit": None},
+            {"label": "СКЗ вибрации", "value": str(next((c["value"] for c in telem.get("channels", []) if c["id"] == "v_rms"), "1.0")), "unit": "мм/с"},
+        ],
         "nodes": nodes,
+        "telemetry": telem,
         "created_at": e.created_at,
         "updated_at": e.updated_at,
     }
@@ -80,11 +101,30 @@ def _eq(e) -> dict:
 
 def _eq_fallback(equipment_id: str) -> dict:
     d = datetime.now().date().isoformat()
+    telem = telemetry_service.get_current_reading(equipment_id)
+    sensor_specs = [
+        {"label": ch["name"], "value": str(ch["value"]), "unit": ch["unit"]}
+        for ch in telem.get("channels", [])
+    ]
+    sensor_specs.append({"label": "Диагноз по вибрации", "value": telem.get("diagnosis", "Норма"), "unit": None})
+    sensor_specs.append({"label": "Интеграция", "value": "OPC UA / Modbus TCP", "unit": None})
+
     return {
         "id": equipment_id, "name": f"Агрегат {equipment_id}", "inventory_number": equipment_id,
         "category": "Промышленное оборудование", "location": "—", "state": "operational",
         "manufacturer": "—", "model": "—", "commissioned_at": d, "service_life_years": 10,
-        "last_maintenance_at": d, "next_maintenance_at": d, "specs": [], "nodes": [],
+        "last_maintenance_at": d, "next_maintenance_at": d,
+        "specs": [
+            {"label": "Статус телеметрии", "value": telem.get("diagnosis", "Норма"), "unit": None},
+        ],
+        "nodes": [
+            {
+                "id": "node-sensors",
+                "name": "📡 Датчики (OPC UA / Modbus)",
+                "specs": sensor_specs,
+            }
+        ],
+        "telemetry": telem,
         "created_at": _now(), "updated_at": _now(),
     }
 
@@ -98,8 +138,27 @@ def list_equipment():
 def get_equipment(equipment_id: str):
     e = storage_service.get_equipment_by_id(equipment_id)
     if not e:
-        raise HTTPException(404, "Оборудование не найдено.")
+        return _eq_fallback(equipment_id)
     return _eq(e)
+
+
+@router.get("/equipment/{equipment_id}/telemetry")
+@router.get("/telemetry/{equipment_id}")
+def get_equipment_telemetry(equipment_id: str):
+    """Текущий срез телеметрии датчиков по OPC UA / Modbus TCP с сервера ввода/вывода."""
+    return telemetry_service.get_current_reading(equipment_id)
+
+
+@router.get("/telemetry/{equipment_id}/history")
+def get_equipment_telemetry_history(equipment_id: str, limit: int = 24):
+    """История измерений датчиков из 500-строчного архива для графиков тренда."""
+    return telemetry_service.get_history(equipment_id, limit=limit)
+
+
+@router.post("/telemetry/{equipment_id}/trigger-anomaly")
+def trigger_telemetry_anomaly(equipment_id: str):
+    """Демо-ручка: принудительно выдаёт срез с аномалией (дисбаланс / расцентровка / износ)."""
+    return telemetry_service.get_current_reading(equipment_id, force_anomaly=True)
 
 
 def _detail(equipment_id: str) -> dict:
@@ -115,7 +174,7 @@ try:
         _HALF, _DEV = True, 0
 except Exception:
     pass
-IMGSZ = 640
+IMGSZ = 960
 _infer_lock = threading.Lock()
 _oil_model = None
 _unified_model = None

@@ -39,6 +39,9 @@ interface PromScanApi {
     @GET("front/api/equipment/{id}")
     suspend fun getEquipment(@Path("id") id: String): Response<EquipmentDto>
 
+    @GET("front/api/equipment/{id}/telemetry")
+    suspend fun getTelemetry(@Path("id") id: String): Response<ru.cyber102.arinspector.data.model.TelemetryDto>
+
     @Multipart
     @POST("front/api/inspect")
     suspend fun inspectFrame(

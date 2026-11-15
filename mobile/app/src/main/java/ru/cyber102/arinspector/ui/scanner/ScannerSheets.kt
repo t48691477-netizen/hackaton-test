@@ -92,6 +92,12 @@ fun EquipmentPassportSheet(
 
             PassportInfoGrid(equipment = equipment)
 
+            val telemetry = equipment.telemetry
+            if (telemetry != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                TelemetryCard(telemetry = telemetry)
+            }
+
             val specs = equipment.specs.orEmpty()
             if (specs.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -493,4 +499,106 @@ fun CreateReportDialog(
             }
         }
     )
+}
+
+@Composable
+fun TelemetryCard(
+    telemetry: ru.cyber102.arinspector.data.model.TelemetryDto,
+    modifier: Modifier = Modifier
+) {
+    val isAlarm = telemetry.overallStatus == "alarm"
+    val isWarn = telemetry.overallStatus == "warning"
+    val statusColor = when {
+        isAlarm -> androidx.compose.ui.graphics.Color(0xFFEF4444)
+        isWarn -> androidx.compose.ui.graphics.Color(0xFFF59E0B)
+        else -> androidx.compose.ui.graphics.Color(0xFF22C55E)
+    }
+
+    Surface(
+        shape = PromScanShapesTokens.Control,
+        color = KstColors.Background,
+        border = BorderStroke(1.dp, statusColor.copy(alpha = 0.6f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "📡 Датчики (OPC UA / Modbus)",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = KstColors.Accent,
+                    fontWeight = FontWeight.Bold
+                )
+                Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                    color = statusColor.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, statusColor)
+                ) {
+                    Text(
+                        text = (telemetry.overallStatus ?: "normal").uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = statusColor,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "Диагноз: ${telemetry.diagnosis ?: "Норма"}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = KstColors.TextPrimary,
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+            HorizontalDivider(color = KstColors.Border)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            val channels = telemetry.channels.orEmpty()
+            if (channels.isNotEmpty()) {
+                channels.forEach { ch ->
+                    val chVal = "${ch.value ?: "—"} ${ch.unit ?: ""}".trim()
+                    val chAlarm = ch.status == "alarm"
+                    val chWarn = ch.status == "warning"
+                    val chColor = when {
+                        chAlarm -> androidx.compose.ui.graphics.Color(0xFFEF4444)
+                        chWarn -> androidx.compose.ui.graphics.Color(0xFFF59E0B)
+                        else -> KstColors.TextPrimary
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = ch.name ?: "Канал",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = KstColors.TextSecondary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = chVal,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = chColor,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Сервер ввода/вывода: ${telemetry.integration?.protocols?.joinToString(" / ") ?: "OPC UA / Modbus TCP"} (LIVE)",
+                style = MaterialTheme.typography.labelSmall,
+                color = KstColors.TextSecondary
+            )
+        }
+    }
 }

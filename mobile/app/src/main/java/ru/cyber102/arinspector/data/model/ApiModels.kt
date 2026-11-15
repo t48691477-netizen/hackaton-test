@@ -57,8 +57,43 @@ data class EquipmentDto(
     @Json(name = "next_maintenance_at") val nextMaintenanceAt: String? = null,
     @Json(name = "specs") val specs: List<EquipmentSpecDto>? = null,
     @Json(name = "nodes") val nodes: List<EquipmentNodeDto>? = null,
+    @Json(name = "telemetry") val telemetry: TelemetryDto? = null,
     @Json(name = "created_at") val createdAt: String? = null,
     @Json(name = "updated_at") val updatedAt: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TelemetryChannelDto(
+    @Json(name = "id") val id: String? = null,
+    @Json(name = "name") val name: String? = null,
+    @Json(name = "modality") val modality: String? = null,
+    @Json(name = "value") val value: Double? = null,
+    @Json(name = "unit") val unit: String? = null,
+    @Json(name = "warning_threshold") val warningThreshold: Double? = null,
+    @Json(name = "alarm_threshold") val alarmThreshold: Double? = null,
+    @Json(name = "status") val status: String? = null,
+    @Json(name = "standard") val standard: String? = null,
+    @Json(name = "location") val location: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TelemetryIntegrationDto(
+    @Json(name = "source") val source: String? = null,
+    @Json(name = "protocols") val protocols: List<String>? = null,
+    @Json(name = "opc_endpoint") val opcEndpoint: String? = null,
+    @Json(name = "modbus_endpoint") val modbusEndpoint: String? = null,
+    @Json(name = "status") val status: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TelemetryDto(
+    @Json(name = "equipment_id") val equipmentId: String? = null,
+    @Json(name = "timestamp") val timestamp: String? = null,
+    @Json(name = "overall_status") val overallStatus: String? = null,
+    @Json(name = "diagnosis") val diagnosis: String? = null,
+    @Json(name = "rpm") val rpm: Double? = null,
+    @Json(name = "channels") val channels: List<TelemetryChannelDto>? = null,
+    @Json(name = "integration") val integration: TelemetryIntegrationDto? = null
 )
 
 @JsonClass(generateAdapter = true)
