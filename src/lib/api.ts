@@ -22,6 +22,7 @@ import {
   type InspectionResult,
   type Report,
   type ReportStatus,
+  type TelemetryData,
 } from './inspection';
 import {
   findEmployeeById,
@@ -508,5 +509,102 @@ export async function updateReportStatus(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, ...(comment ? { comment } : {}) }),
     },
+  );
+}
+
+export async function fetchTelemetry(
+  equipmentId: string,
+): Promise<TelemetryData> {
+  if (API_CONFIG.useMock) {
+    return {
+      equipment_id: equipmentId,
+      timestamp: new Date().toISOString(),
+      overall_status: 'normal',
+      diagnosis: 'Норма',
+      standard: 'ГОСТ ISO 10816-3',
+      integration: 'OPC UA / Modbus TCP',
+      rpm: 2954,
+      channels: [
+        {
+          id: 'v_rms',
+          name: 'СКЗ виброскорости',
+          modality: 'vibration',
+          value: 1.05,
+          unit: 'мм/с',
+          warning_threshold: 2.8,
+          alarm_threshold: 4.5,
+          status: 'normal',
+          standard: 'ГОСТ ISO 10816-3',
+        },
+        {
+          id: 'amp_1x',
+          name: 'Амплитуда 1x (оборотная)',
+          modality: 'vibration',
+          value: 0.85,
+          unit: 'мм/с',
+          warning_threshold: 2.8,
+          alarm_threshold: 4.5,
+          status: 'normal',
+        },
+        {
+          id: 'amp_2x',
+          name: 'Амплитуда 2x (расцентровка)',
+          modality: 'vibration',
+          value: 0.35,
+          unit: 'мм/с',
+          warning_threshold: 1.8,
+          alarm_threshold: 3.0,
+          status: 'normal',
+        },
+        {
+          id: 't_bearing',
+          name: 'Температура подшипника',
+          modality: 'temperature',
+          value: 48.5,
+          unit: '°C',
+          warning_threshold: 70.0,
+          alarm_threshold: 85.0,
+          status: 'normal',
+        },
+      ],
+    };
+  }
+
+  return request<TelemetryData>(
+    `/api/telemetry/${encodeURIComponent(equipmentId)}`,
+  );
+}
+
+export async function triggerTelemetryAnomaly(
+  equipmentId: string,
+): Promise<TelemetryData> {
+  if (API_CONFIG.useMock) {
+    return {
+      equipment_id: equipmentId,
+      timestamp: new Date().toISOString(),
+      overall_status: 'alarm',
+      diagnosis: 'Тревога: Дефект подшипника',
+      standard: 'ГОСТ ISO 10816-3',
+      integration: 'OPC UA / Modbus TCP',
+      rpm: 2954,
+      channels: [
+        {
+          id: 'v_rms',
+          name: 'СКЗ виброскорости',
+          modality: 'vibration',
+          value: 5.42,
+          unit: 'мм/с',
+          warning_threshold: 2.8,
+          alarm_threshold: 4.5,
+          status: 'alarm',
+          standard: 'ГОСТ ISO 10816-3',
+        },
+      ],
+    };
+  }
+
+  return request<TelemetryData>(
+    `/api/telemetry/${encodeURIComponent(equipmentId)}/trigger-anomaly`,
+    { method: 'POST' },
   );
 }

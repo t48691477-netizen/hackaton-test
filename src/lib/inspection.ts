@@ -42,6 +42,30 @@ export interface EquipmentSummary {
   state: EquipmentState;
 }
 
+export interface TelemetryChannel {
+  id: string;
+  name: string;
+  modality: 'vibration' | 'temperature' | 'speed' | string;
+  value: number;
+  unit: string;
+  warning_threshold: number;
+  alarm_threshold: number;
+  status: 'normal' | 'warning' | 'alarm';
+  standard?: string;
+  location?: string;
+}
+
+export interface TelemetryData {
+  equipment_id: string;
+  timestamp: string;
+  overall_status: 'normal' | 'warning' | 'alarm';
+  diagnosis: string;
+  standard: string;
+  integration: string;
+  rpm: number;
+  channels: TelemetryChannel[];
+}
+
 export interface EquipmentDetail extends EquipmentSummary {
   manufacturer: string;
   model: string;
@@ -51,6 +75,7 @@ export interface EquipmentDetail extends EquipmentSummary {
   next_maintenance_at: string;
   specs: SpecItem[];
   nodes: EquipmentNode[];
+  telemetry?: TelemetryData;
   created_at: string;
   updated_at: string;
 }
@@ -94,6 +119,7 @@ export interface InspectionResult {
   equipment: EquipmentDetail;
   defects: Defect[];
   condition_parameters: ConditionParameters;
+  telemetry?: TelemetryData;
   llm: LlmAssessment;
   summary: string;
   meta: InspectionMeta;

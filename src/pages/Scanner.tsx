@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  Activity,
+  AlertTriangle,
   Camera,
   CameraOff,
   Check,
+  CheckCircle2,
   ChevronDown,
   Copy,
   Crosshair,
@@ -15,20 +18,24 @@ import {
   Maximize2,
   Minimize2,
   MousePointer2,
+  Radio,
   RefreshCw,
   RotateCcw,
   Send,
   SwitchCamera,
   Upload,
   Wrench,
+  Zap,
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import {
   API_CONFIG,
   createReport,
   fetchEquipmentById,
+  fetchTelemetry,
   inspectImage,
   requestDetailedAnalysis,
+  triggerTelemetryAnomaly,
 } from '../lib/api';
 import {
   EMPLOYEES_CHANGED_EVENT,
@@ -46,6 +53,7 @@ import {
   type Report,
   type Severity,
   type SpecItem,
+  type TelemetryData,
 } from '../lib/inspection';
 import { useFocusTrap } from '../lib/useFocusTrap';
 
@@ -718,6 +726,216 @@ function DetailedAnalysisView({ result }: { result: DetailedAnalysisResult }) {
   );
 }
 
+function TelemetryWidget({
+  equipmentId,
+  initialTelemetry,
+}: {
+  equipmentId: string;
+  initialTelemetry?: TelemetryData | null;
+}) {
+  const [telemetry, setTelemetry] = useState<TelemetryData | null>(initialTelemetry ?? null);
+  const [loading, setLoading] = useState(!initialTelemetry);
+  const [triggering, setTriggering] = useState(false);
+  const [activeTab, setActiveTab] = useState<'all' | 'vibration' | 'temperature'>('all');
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const data = await fetchTelemetry(equipmentId);
+        if (active) {
+          setTelemetry(data);
+          setLoading(false);
+        }
+      } catch {
+        // сохраняем текущее состояние при ошибке
+      }
+    };
+
+    void load();
+    const interval = setInterval(() => {
+      void load();
+    }, 3500);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [equipmentId]);
+
+  const handleTriggerAnomaly = async () => {
+    setTriggering(true);
+    try {
+      const data = await triggerTelemetryAnomaly(equipmentId);
+      setTelemetry(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  if (!telemetry && loading) {
+    return (
+      <div className="mt-4 flex items-center gap-2 border-y border-line py-3 text-xs text-muted">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+        Подключение к серверу интеграции (OPC UA / Modbus)...
+      </div>
+    );
+  }
+
+  if (!telemetry) return null;
+
+  const isAlarm = telemetry.overall_status === 'alarm';
+  const isWarning = telemetry.overall_status === 'warning';
+  const isNormal = telemetry.overall_status === 'normal';
+
+  const statusBadge = isAlarm
+    ? 'border-danger/30 bg-danger/10 text-danger'
+    : isWarning
+    ? 'border-warn/30 bg-warn/10 text-warn'
+    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
+
+  const statusDot = isAlarm ? 'bg-danger' : isWarning ? 'bg-warn' : 'bg-emerald-500';
+
+  const channels = telemetry.channels ?? [];
+  const filteredChannels = channels.filter((ch) => {
+    if (activeTab === 'vibration') return ch.modality === 'vibration';
+    if (activeTab === 'temperature') return ch.modality === 'temperature';
+    return true;
+  });
+
+  return (
+    <section className="mt-5 border-y border-line py-4" aria-labelledby="telemetry-heading">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2 w-2">
+            <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${statusDot}`} />
+            <span className={`relative inline-flex h-2 w-2 rounded-full ${statusDot}`} />
+          </span>
+          <h3 id="telemetry-heading" className="technical flex items-center gap-1.5 font-medium">
+            <Radio className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+            Датчики (OPC UA / Modbus)
+          </h3>
+        </div>
+        <span className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-medium ${statusBadge}`}>
+          {isAlarm ? (
+            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+          ) : isNormal ? (
+            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+          ) : (
+            <Activity className="h-3 w-3" aria-hidden="true" />
+          )}
+          {telemetry.diagnosis}
+        </span>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between text-[11px] text-faint">
+        <span>Протокол: {telemetry.integration || 'OPC UA / Modbus TCP'}</span>
+        <span>Обороты: {Math.round(telemetry.rpm)} об/мин</span>
+      </div>
+
+      <div className="mt-3 flex gap-1.5 border-b border-line pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab('all')}
+          className={`rounded px-2 py-1 text-xs transition-colors ${
+            activeTab === 'all'
+              ? 'bg-accent/15 font-medium text-accent'
+              : 'text-faint hover:text-ink'
+          }`}
+        >
+          Все ({channels.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('vibration')}
+          className={`rounded px-2 py-1 text-xs transition-colors ${
+            activeTab === 'vibration'
+              ? 'bg-accent/15 font-medium text-accent'
+              : 'text-faint hover:text-ink'
+          }`}
+        >
+          Вибрация
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('temperature')}
+          className={`rounded px-2 py-1 text-xs transition-colors ${
+            activeTab === 'temperature'
+              ? 'bg-accent/15 font-medium text-accent'
+              : 'text-faint hover:text-ink'
+          }`}
+        >
+          Температура
+        </button>
+      </div>
+
+      <div className="mt-2.5 grid grid-cols-2 gap-2">
+        {filteredChannels.map((ch) => {
+          const chAlarm = ch.status === 'alarm';
+          const chWarn = ch.status === 'warning';
+          const chClass = chAlarm
+            ? 'border-danger/40 bg-danger/5'
+            : chWarn
+            ? 'border-warn/40 bg-warn/5'
+            : 'border-line bg-panel/50';
+
+          return (
+            <div key={ch.id} className={`rounded border p-2 transition-colors ${chClass}`}>
+              <div className="flex items-center justify-between">
+                <span className="truncate text-[11px] text-faint" title={ch.name}>
+                  {ch.name}
+                </span>
+                {chAlarm && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />}
+                {chWarn && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />}
+              </div>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span
+                  className={`text-sm font-semibold tabular ${
+                    chAlarm ? 'text-danger' : chWarn ? 'text-warn' : 'text-ink'
+                  }`}
+                >
+                  {ch.value}
+                </span>
+                <span className="text-[11px] text-faint">{ch.unit}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between text-[10px] text-faint">
+                <span>Порог: {ch.warning_threshold}</span>
+                {ch.standard ? (
+                  <span className="max-w-[70px] truncate" title={ch.standard}>
+                    {ch.standard}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={() => void handleTriggerAnomaly()}
+          disabled={triggering}
+          className={`inline-flex w-full items-center justify-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors ${
+            isAlarm
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400'
+              : 'border-warn/30 bg-warn/10 text-warn hover:bg-warn/20'
+          }`}
+        >
+          <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+          {triggering
+            ? 'Симуляция…'
+            : isAlarm
+            ? 'Восстановить нормальный режим'
+            : '⚡ Спровоцировать аномалию (демо)'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 interface LiveReportProps {
   analysis: InspectionResult;
   activeDefect: Defect | null;
@@ -937,6 +1155,11 @@ function LiveReport({
             </div>
           </dl>
         </section>
+
+        <TelemetryWidget
+          equipmentId={displayedEquipment.id}
+          initialTelemetry={displayedEquipment.telemetry ?? analysis.equipment.telemetry}
+        />
 
         <section className="mt-5" aria-label="Подробный анализ дефектов">
           <button
@@ -1317,6 +1540,8 @@ function EmptyReport({ status }: { status: ScannerStatus }) {
             </dd>
           </div>
         </dl>
+
+        <TelemetryWidget equipmentId="pump-cns-38-220" />
       </div>
     </div>
   );
