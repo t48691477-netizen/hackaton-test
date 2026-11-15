@@ -60,8 +60,8 @@ export interface TelemetryData {
   timestamp: string;
   overall_status: 'normal' | 'warning' | 'alarm';
   diagnosis: string;
-  standard: string;
-  integration: string;
+  standard?: string;
+  integration?: string | Record<string, unknown>;
   rpm: number;
   channels: TelemetryChannel[];
 }

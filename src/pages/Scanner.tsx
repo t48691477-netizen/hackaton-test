@@ -831,7 +831,14 @@ function TelemetryWidget({
       </div>
 
       <div className="mt-2 flex items-center justify-between text-[11px] text-faint">
-        <span>Протокол: {telemetry.integration || 'OPC UA / Modbus TCP'}</span>
+        <span>
+          Протокол:{' '}
+          {typeof telemetry.integration === 'object' && telemetry.integration !== null
+            ? (telemetry.integration as { protocols?: string[] }).protocols?.join(' / ') || 'OPC UA / Modbus TCP'
+            : typeof telemetry.integration === 'string'
+            ? telemetry.integration
+            : 'OPC UA / Modbus TCP'}
+        </span>
         <span>Обороты: {Math.round(telemetry.rpm)} об/мин</span>
       </div>
 
