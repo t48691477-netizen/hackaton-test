@@ -203,11 +203,12 @@ try:
     if torch.cuda.is_available():
         _HALF, _DEV = True, 0
     else:
-        torch.set_num_threads(min(4, os.cpu_count() or 4))
+        torch.set_num_threads(min(6, os.cpu_count() or 4))
 except Exception:
     pass
-IMGSZ = 1024
+IMGSZ = int(os.getenv("FRONT_INSPECT_IMGSZ", "512"))
 _infer_lock = threading.Lock()
+_last_inspect_cache: dict[str, dict] = {}
 _oil_model = None
 _unified_model = None
 _unified_tried = False
@@ -290,10 +291,10 @@ def _models():
 def warm_up():
     try:
         import numpy as np
-        img = np.zeros((480, 640, 3), np.uint8)
+        img = np.zeros((384, 512, 3), np.uint8)
         for m in (_unified(),) + _models():
             if m is not None:
-                m.predict(img, imgsz=IMGSZ, half=False, device=_DEV, verbose=False)
+                m.predict(img, imgsz=IMGSZ, device=_DEV, verbose=False)
     except Exception as exc:
         print(f"[front_compat] warm_up: {exc}")
 
@@ -307,7 +308,7 @@ def _run(model, img, conf, kind, skip, node_id):
         from contextlib import nullcontext
         ctx = nullcontext()
     with ctx:
-        r = model.predict(img, conf=conf, imgsz=IMGSZ, half=False, device="cpu" if onnx else _DEV, verbose=False, max_det=15)[0]
+        r = model.predict(img, conf=conf, imgsz=IMGSZ, device="cpu" if onnx else _DEV, verbose=False, max_det=15)[0]
     if r.boxes is None or len(r.boxes) == 0:
         return []
     bx = r.boxes.xyxyn.cpu().numpy()
@@ -381,40 +382,52 @@ def inspect(file: UploadFile = File(...), equipment_id: str = Form(...)):
     if oil is not None:
         tasks.append((oil, img, 0.20, "oil", set(), node_id))
 
-    out = []
-    with _infer_lock:
-        if len(tasks) > 1:
-            with ThreadPoolExecutor(max_workers=min(4, len(tasks))) as ex:
-                for res in ex.map(lambda args: _run(*args), tasks):
-                    out += res
-        elif len(tasks) == 1:
-            out += _run(*tasks[0])
-    out = _dedup_defects(out)
-    if len(out) >= 2:
+    acquired = _infer_lock.acquire(timeout=0.35)
+    if not acquired:
+        cached = _last_inspect_cache.get(equipment_id)
+        if cached and (time.time() - cached.get("_epoch", 0.0)) < 2.5:
+            copy_res = dict(cached)
+            copy_res["meta"] = dict(cached.get("meta", {}))
+            copy_res["meta"]["cached"] = True
+            copy_res["meta"]["processing_ms"] = int((time.time() - t0) * 1000)
+            return copy_res
+        _infer_lock.acquire()
+
+    try:
+        out = []
+        for t in tasks:
+            out += _run(*t)
+        out = _dedup_defects(out)
+        if len(out) >= 2:
+            for d in out:
+                if d.get("source_model") in ("corrosion", "crack", "oil"):
+                    d["severity"] = "high"
+        mx = lambda k: max([d["confidence"] for d in out if d["source_model"] == k], default=0.0)
+        crit = max((d["severity"] for d in out), key=lambda v: _SEV_RANK[v], default="low")
+        if out and crit == "low":
+            crit = "medium"
+        kinds = []
         for d in out:
-            if d.get("source_model") in ("corrosion", "crack", "oil"):
-                d["severity"] = "high"
-    mx = lambda k: max([d["confidence"] for d in out if d["source_model"] == k], default=0.0)
-    crit = max((d["severity"] for d in out), key=lambda v: _SEV_RANK[v], default="low")
-    if out and crit == "low":
-        crit = "medium"
-    kinds = []
-    for d in out:
-        if d["source_model"] not in kinds:
-            kinds.append(d["source_model"])
-    cause = "; ".join(_KIND[k][2] for k in kinds) if kinds else "Дефектов не обнаружено."
-    steps = [_KIND[k][1] for k in kinds] or ["Продолжить плановый осмотр."]
-    return {
-        "inspection_id": f"insp-{uuid.uuid4().hex[:10]}",
-        "equipment": _eq(eq) if eq else _eq_fallback(equipment_id),
-        "defects": out,
-        "condition_parameters": {"oil_leak_probability": mx("oil"), "rust_probability": mx("corrosion"), "poor_weld_probability": mx("crack")},
-        "llm": {"criticality": crit, "probable_cause": cause, "recommendation_steps": steps},
-        "summary": f"Найдено дефектов: {len(out)}. {cause}" if out else "Дефектов не обнаружено.",
-        "meta": {"vision_mode": "real", "llm_mode": "mock",
-                 "models": _model_names(),
-                 "processing_ms": int((time.time() - t0) * 1000), "analyzed_at": _now()},
-    }
+            if d["source_model"] not in kinds:
+                kinds.append(d["source_model"])
+        cause = "; ".join(_KIND[k][2] for k in kinds) if kinds else "Дефектов не обнаружено."
+        steps = [_KIND[k][1] for k in kinds] or ["Продолжить плановый осмотр."]
+        resp = {
+            "inspection_id": f"insp-{uuid.uuid4().hex[:10]}",
+            "equipment": _eq(eq) if eq else _eq_fallback(equipment_id),
+            "defects": out,
+            "condition_parameters": {"oil_leak_probability": mx("oil"), "rust_probability": mx("corrosion"), "poor_weld_probability": mx("crack")},
+            "llm": {"criticality": crit, "probable_cause": cause, "recommendation_steps": steps},
+            "summary": f"Найдено дефектов: {len(out)}. {cause}" if out else "Дефектов не обнаружено.",
+            "meta": {"vision_mode": "real", "llm_mode": "mock",
+                     "models": _model_names(),
+                     "processing_ms": int((time.time() - t0) * 1000), "analyzed_at": _now()},
+            "_epoch": time.time(),
+        }
+        _last_inspect_cache[equipment_id] = resp
+        return resp
+    finally:
+        _infer_lock.release()
 
 
 def _image_b64(file: UploadFile, max_side: int = 1024) -> Optional[str]:

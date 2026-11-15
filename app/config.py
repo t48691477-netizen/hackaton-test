@@ -40,7 +40,7 @@ class Settings(BaseModel):
 
     WELDING_MODEL_REPO: str = "avinashhm/welding-defect-yolov8-full-training"
     WELDING_MODEL_FILENAME: str = "best.pt"
-    WELDING_LOCAL_PATH: Path = _first_existing(os.getenv("WELDING_WEIGHTS"), "welding_yolov8_det.pt")
+    WELDING_LOCAL_PATH: Path = _first_existing(os.getenv("WELDING_WEIGHTS"), "best.pt", "welding_yolov8_det.pt")
     UNIFIED_LOCAL_PATH: Path = _first_existing(os.getenv("UNIFIED_WEIGHTS"), "best.pt", "defects_yolo.onnx")
     OIL_LOCAL_PATH: Path = _first_existing(os.getenv("OIL_WEIGHTS"), "oil_yolo26.pt", "oil_leaks.pt")
     
