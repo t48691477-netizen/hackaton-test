@@ -292,7 +292,7 @@ fun DetailedInspectionSheet(
                                     color = KstColors.TextPrimary,
                                     modifier = Modifier.weight(1f)
                                 )
-                                SeverityBadge(severity = finding.severity)
+                                SeverityBadge(severity = finding.resolvedSeverity)
                             }
                             if (!finding.description.isNullOrBlank()) {
                                 Spacer(modifier = Modifier.height(4.dp))

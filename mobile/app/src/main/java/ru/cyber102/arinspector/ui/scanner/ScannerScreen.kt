@@ -596,9 +596,23 @@ private fun InspectionSummaryBottomPanel(
         contentPadding = PaddingValues(14.dp)
     ) {
         if (inspection != null) {
-            val criticality = inspection.llm?.criticality
-                ?: inspection.defects?.firstOrNull()?.severity
-                ?: "low"
+            val maxDefectSeverity = inspection.defects?.maxOfOrNull {
+                when (it.resolvedSeverity) {
+                    "high" -> 2
+                    "medium" -> 1
+                    else -> 0
+                }
+            } ?: 0
+            val llmRank = when (inspection.llm?.criticality?.lowercase()) {
+                "high" -> 2
+                "medium" -> 1
+                else -> 0
+            }
+            val criticality = when (maxOf(llmRank, maxDefectSeverity)) {
+                2 -> "high"
+                1 -> "medium"
+                else -> "low"
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

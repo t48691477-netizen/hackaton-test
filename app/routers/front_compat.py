@@ -29,8 +29,36 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _sev(conf: float) -> str:
-    return "high" if conf >= 0.7 else "medium" if conf >= 0.45 else "low"
+def _sev(conf: float, kind: str = "corrosion", bbox: list[float] | None = None) -> str:
+    # 1. Трещины и дефекты сварных швов — всегда наивысший приоритет
+    if kind in ("crack", "welding", "welding_defect"):
+        return "high"
+    
+    # 2. Площадь зоны дефекта (в долях от площади кадра)
+    area = 0.0
+    if bbox and len(bbox) >= 4:
+        w = max(0.0, float(bbox[2]) - float(bbox[0]))
+        h = max(0.0, float(bbox[3]) - float(bbox[1]))
+        area = w * h
+
+    # 3. Коррозия металла
+    # В реальных условиях YOLO для коррозии выдает уверенность 0.20-0.45.
+    # Если площадь очага >= 1.2% кадра или модель уверена от 25% — это HIGH.
+    # Любая подтвержденная коррозия узла — минимум MEDIUM.
+    if kind == "corrosion":
+        if area >= 0.012 or conf >= 0.25:
+            return "high"
+        return "medium"
+
+    # 4. Утечки масла
+    if kind == "oil":
+        if area >= 0.02 or conf >= 0.35:
+            return "high"
+        return "medium"
+
+    if conf >= 0.25 or area >= 0.02:
+        return "high"
+    return "medium"
 
 
 def _state(status: str) -> str:
@@ -178,7 +206,7 @@ try:
         torch.set_num_threads(min(4, os.cpu_count() or 4))
 except Exception:
     pass
-IMGSZ = 640
+IMGSZ = 1024
 _infer_lock = threading.Lock()
 _oil_model = None
 _unified_model = None
@@ -265,7 +293,7 @@ def warm_up():
         img = np.zeros((480, 640, 3), np.uint8)
         for m in (_unified(),) + _models():
             if m is not None:
-                m.predict(img, imgsz=IMGSZ, half=_HALF, device=_DEV, verbose=False)
+                m.predict(img, imgsz=IMGSZ, half=False, device=_DEV, verbose=False)
     except Exception as exc:
         print(f"[front_compat] warm_up: {exc}")
 
@@ -279,7 +307,7 @@ def _run(model, img, conf, kind, skip, node_id):
         from contextlib import nullcontext
         ctx = nullcontext()
     with ctx:
-        r = model.predict(img, conf=conf, imgsz=IMGSZ, half=False if onnx else _HALF, device="cpu" if onnx else _DEV, verbose=False, max_det=15)[0]
+        r = model.predict(img, conf=conf, imgsz=IMGSZ, half=False, device="cpu" if onnx else _DEV, verbose=False, max_det=15)[0]
     if r.boxes is None or len(r.boxes) == 0:
         return []
     bx = r.boxes.xyxyn.cpu().numpy()
@@ -299,9 +327,10 @@ def _run(model, img, conf, kind, skip, node_id):
             step = max(1, len(polys[i]) // 40)
             poly = [[round(float(x), 4), round(float(y), 4)] for x, y in polys[i][::step]]
         c = float(cf[i])
+        b = [round(max(0.0, min(1.0, float(v))), 4) for v in bx[i]]
         out.append({
-            "id": f"{kind_i}-{i + 1}", "label": title, "confidence": round(c, 3), "severity": _sev(c),
-            "bbox": [round(max(0.0, min(1.0, float(v))), 4) for v in bx[i]], "polygon": poly,
+            "id": f"{kind_i}-{i + 1}", "label": title, "confidence": round(c, 3), "severity": _sev(c, kind_i, b),
+            "bbox": b, "polygon": poly,
             "node_id": node_id, "source_model": kind_i, "recommendation": rec,
         })
     return out
@@ -361,8 +390,14 @@ def inspect(file: UploadFile = File(...), equipment_id: str = Form(...)):
         elif len(tasks) == 1:
             out += _run(*tasks[0])
     out = _dedup_defects(out)
+    if len(out) >= 2:
+        for d in out:
+            if d.get("source_model") in ("corrosion", "crack", "oil"):
+                d["severity"] = "high"
     mx = lambda k: max([d["confidence"] for d in out if d["source_model"] == k], default=0.0)
     crit = max((d["severity"] for d in out), key=lambda v: _SEV_RANK[v], default="low")
+    if out and crit == "low":
+        crit = "medium"
     kinds = []
     for d in out:
         if d["source_model"] not in kinds:

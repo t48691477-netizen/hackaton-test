@@ -194,9 +194,10 @@ class TOIRExpertService:
         max_conf = max(d.confidence for d in defects)
 
         # Оценка критичности
-        if has_welding or (has_corrosion and max_conf > 0.85):
+        defect_count = len(defects)
+        if has_welding or (has_corrosion and (defect_count >= 2 or max_conf >= 0.25)):
             criticality = CriticalityLevel.HIGH
-        elif has_corrosion and max_conf > 0.5:
+        elif has_corrosion:
             criticality = CriticalityLevel.MEDIUM
         else:
             criticality = CriticalityLevel.LOW

@@ -54,7 +54,7 @@ fun DefectOverlayCanvas(
         val labelPadV = 4.dp.toPx()
 
         defects.forEach { defect ->
-            val color = when (defect.severity?.lowercase()) {
+            val color = when (defect.resolvedSeverity) {
                 "high" -> KstColors.Error
                 "medium" -> KstColors.SeverityMedium
                 else -> KstColors.SeverityLow
@@ -119,7 +119,7 @@ fun DefectOverlayCanvas(
 
             if (hasGeometry) {
                 val pct = ((defect.confidence ?: 0.0) * 100.0).roundToInt()
-                val sevWord = Formatters.severityLabel(defect.severity)
+                val sevWord = Formatters.severityLabel(defect.resolvedSeverity)
                 val title = "${defect.label ?: "Дефект"} $pct% · $sevWord"
 
                 val measured = textMeasurer.measure(

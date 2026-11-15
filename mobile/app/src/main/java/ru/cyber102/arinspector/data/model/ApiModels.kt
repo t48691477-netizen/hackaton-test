@@ -107,7 +107,24 @@ data class DefectDto(
     @Json(name = "node_id") val nodeId: String? = null,
     @Json(name = "source_model") val sourceModel: String? = null,
     @Json(name = "recommendation") val recommendation: String? = null
-)
+) {
+    val resolvedSeverity: String
+        get() {
+            val s = severity?.lowercase()
+            if (s == "high") return "high"
+            val lbl = (label ?: "").lowercase()
+            val src = (sourceModel ?: "").lowercase()
+            val conf = confidence ?: 0.0
+            if ("трещин" in lbl || "crack" in src || "weld" in src) return "high"
+            if ("корроз" in lbl || "corros" in src || "rust" in lbl) {
+                return if (conf >= 0.25) "high" else "medium"
+            }
+            if ("масл" in lbl || "oil" in src) {
+                return if (conf >= 0.35) "high" else "medium"
+            }
+            return s ?: if (conf >= 0.25) "high" else "medium"
+        }
+}
 
 @JsonClass(generateAdapter = true)
 data class ConditionParametersDto(
@@ -149,7 +166,16 @@ data class DetailedFindingDto(
     @Json(name = "description") val description: String? = null,
     @Json(name = "severity") val severity: String? = null,
     @Json(name = "recommendation") val recommendation: String? = null
-)
+) {
+    val resolvedSeverity: String
+        get() {
+            val s = severity?.lowercase()
+            if (s == "high") return "high"
+            val t = (title ?: "").lowercase()
+            if ("трещин" in t || "crack" in t || "weld" in t || "корроз" in t || "rust" in t) return "high"
+            return s ?: "medium"
+        }
+}
 
 @JsonClass(generateAdapter = true)
 data class DetailedInspectResponse(
