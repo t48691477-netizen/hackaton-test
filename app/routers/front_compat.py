@@ -213,13 +213,40 @@ def _unified():
     return _unified_model
 
 
+def _dedup_defects(defects: list, iou_thresh: float = 0.45) -> list:
+    if len(defects) <= 1:
+        return defects
+    sorted_d = sorted(defects, key=lambda x: x.get("confidence", 0), reverse=True)
+    kept = []
+    for d in sorted_d:
+        box_a = d["bbox"]
+        overlap = False
+        for k in kept:
+            box_b = k["bbox"]
+            xA = max(box_a[0], box_b[0])
+            yA = max(box_a[1], box_b[1])
+            xB = min(box_a[2], box_b[2])
+            yB = min(box_a[3], box_b[3])
+            inter = max(0.0, xB - xA) * max(0.0, yB - yA)
+            area_a = max(0.0, box_a[2] - box_a[0]) * max(0.0, box_a[3] - box_a[1])
+            area_b = max(0.0, box_b[2] - box_b[0]) * max(0.0, box_b[3] - box_b[1])
+            union = area_a + area_b - inter
+            iou = inter / union if union > 0 else 0.0
+            if iou > iou_thresh:
+                overlap = True
+                break
+        if not overlap:
+            kept.append(d)
+    return kept
+
+
 def _models():
     global _oil_model
-    if _unified() is not None:
-        return None, None, None
     from app.services.model_loader import model_loader
     c = model_loader.load_corrosion_model()
-    w = model_loader.load_welding_model()
+    w = None
+    if _unified() is None:
+        w = model_loader.load_welding_model()
     if _oil_model is None:
         p = settings.OIL_LOCAL_PATH
         if p.exists():
@@ -309,11 +336,12 @@ def inspect(file: UploadFile = File(...), equipment_id: str = Form(...)):
         if uni is not None:
             out += _run(uni, img, 0.20, None, set(), node_id)
         if corr is not None:
-            out += _run(corr, img, 0.25, "corrosion", {"car"}, node_id)
+            out += _run(corr, img, 0.20, "corrosion", {"car"}, node_id)
         if weld is not None:
-            out += _run(weld, img, 0.25, "crack", {"Good Weld"}, node_id)
+            out += _run(weld, img, 0.20, "crack", {"Good Weld"}, node_id)
         if oil is not None:
-            out += _run(oil, img, 0.25, "oil", set(), node_id)
+            out += _run(oil, img, 0.20, "oil", set(), node_id)
+    out = _dedup_defects(out)
     mx = lambda k: max([d["confidence"] for d in out if d["source_model"] == k], default=0.0)
     crit = max((d["severity"] for d in out), key=lambda v: _SEV_RANK[v], default="low")
     kinds = []

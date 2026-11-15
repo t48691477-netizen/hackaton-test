@@ -35,7 +35,7 @@ class Settings(BaseModel):
     CORROSION_MODEL_REPO: str = "Decizez/yolov-corrosion-detection"
     CORROSION_MODEL_FILENAME: str = "Basic_YOLO11_v1.pt"
     CORROSION_LOCAL_PATH: Path = _first_existing(
-        os.getenv("CORROSION_WEIGHTS"), "corrosion_yolo26.pt", "corrosion_yolov11_seg.pt"
+        os.getenv("CORROSION_WEIGHTS"), "Basic_YOLO11_v1.pt", "corrosion_yolo26.pt", "corrosion_yolov11_seg.pt"
     )
 
     WELDING_MODEL_REPO: str = "avinashhm/welding-defect-yolov8-full-training"
