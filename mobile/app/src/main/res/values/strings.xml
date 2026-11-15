@@ -6,6 +6,7 @@
     <!-- Navigation -->
     <string name="nav_scanner">Сканер</string>
     <string name="nav_tasks">Задачи</string>
+    <string name="nav_employees">Сотрудники</string>
     <string name="nav_settings">Настройки</string>
     <string name="cd_back">Назад</string>
     <string name="cd_settings">Открыть настройки</string>

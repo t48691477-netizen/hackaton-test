@@ -57,8 +57,10 @@ app.include_router(detect_router)
 app.include_router(equipment_router)
 app.include_router(inspect_router)
 app.include_router(reports_router)
+from app.routers.employees_api import router as employees_api_router
 from app.routers.front_compat import router as front_compat_router
 app.include_router(front_compat_router)
+app.include_router(employees_api_router)
 
 @app.get("/", tags=["UI"])
 @app.get("/ui", tags=["UI"])

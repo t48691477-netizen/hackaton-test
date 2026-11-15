@@ -198,3 +198,25 @@ data class InspectOutcome(
     val rawJson: String,
     val conditionParametersJson: String
 )
+
+@JsonClass(generateAdapter = true)
+data class EmployeeDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "full_name") val fullName: String,
+    @Json(name = "email") val email: String,
+    @Json(name = "role") val role: String,
+    @Json(name = "created_at") val createdAt: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class EmployeeCreateRequest(
+    @Json(name = "full_name") val fullName: String,
+    @Json(name = "email") val email: String,
+    @Json(name = "role") val role: String
+)
+
+@JsonClass(generateAdapter = true)
+data class EmployeeCreateResponse(
+    @Json(name = "employee") val employee: EmployeeDto,
+    @Json(name = "access_key") val accessKey: String
+)

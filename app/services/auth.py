@@ -191,8 +191,117 @@ class AuthService:
         with self._connection() as conn:
             conn.execute("DELETE FROM auth_login_attempts WHERE client_id = ?", (client_id,))
 
+    _KEY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+    def _ensure_employees(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS employees (
+                id TEXT PRIMARY KEY,
+                full_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                role TEXT NOT NULL,
+                key_salt TEXT NOT NULL,
+                key_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )"""
+        )
+        count = conn.execute("SELECT COUNT(*) FROM employees").fetchone()[0]
+        if count == 0:
+            defaults = [
+                ("emp-001", "Алексей Смирнов", "smirnov@promscan.ru", "admin", "PSCADM3456"),
+                ("emp-002", "Анна Петрова", "petrova@promscan.ru", "engineer", "PSCENG5678"),
+                ("emp-003", "Иван Васильев", "vasiliev@promscan.ru", "engineer", "8ZG9X5N7KX"),
+                ("emp-004", "Сергей Кузнецов", "kuznetsov@promscan.ru", "engineer", "PSCWKR9012"),
+                ("emp-005", "Ольга Морозова", "morozova@promscan.ru", "dispatcher", "PSCDSP4567"),
+                ("emp-006", "Дмитрий Волков", "volkov@promscan.ru", "director", "PSCDRT2345"),
+            ]
+            now = self._iso(self._now())
+            for eid, name, mail, role, key in defaults:
+                salt = secrets.token_hex(16)
+                khash = self._employee_hash(salt, key)
+                conn.execute(
+                    "INSERT INTO employees (id, full_name, email, role, key_salt, key_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (eid, name, mail, role, salt, khash, now),
+                )
+            conn.commit()
+
+    @staticmethod
+    def _employee_hash(salt: str, key: str) -> str:
+        return hashlib.sha256((salt + key).encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _employee_view(row: sqlite3.Row | tuple) -> dict:
+        return {
+            "id": row[0],
+            "full_name": row[1],
+            "email": row[2],
+            "role": row[3],
+            "created_at": row[4],
+        }
+
+    def list_employees(self) -> list[dict]:
+        with self._connection() as conn:
+            self._ensure_employees(conn)
+            rows = conn.execute(
+                "SELECT id, full_name, email, role, created_at FROM employees ORDER BY created_at"
+            ).fetchall()
+        return [self._employee_view(row) for row in rows]
+
+    def create_employee(self, full_name: str, email: str, role: str) -> tuple[dict, str]:
+        key = "".join(secrets.choice(self._KEY_ALPHABET) for _ in range(10))
+        salt = secrets.token_hex(16)
+        employee_id = f"emp-{secrets.token_hex(4)}"
+        created_at = self._iso(self._now())
+        with self._connection() as conn:
+            self._ensure_employees(conn)
+            conn.execute(
+                "INSERT INTO employees VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (employee_id, full_name, email, role, salt, self._employee_hash(salt, key), created_at),
+            )
+        return (
+            {"id": employee_id, "full_name": full_name, "email": email, "role": role, "created_at": created_at},
+            key,
+        )
+
+    def get_employee_role(self, employee_id: str) -> str | None:
+        with self._connection() as conn:
+            self._ensure_employees(conn)
+            row = conn.execute("SELECT role FROM employees WHERE id = ?", (employee_id,)).fetchone()
+        return row[0] if row else None
+
+    def delete_employee(self, employee_id: str) -> bool:
+        with self._connection() as conn:
+            self._ensure_employees(conn)
+            cursor = conn.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
+            deleted = cursor.rowcount > 0
+            if deleted:
+                conn.execute(
+                    "UPDATE auth_sessions SET revoked_at = ? WHERE revoked_at IS NULL AND account_json LIKE ?",
+                    (self._iso(self._now()), f'%"id":"{employee_id}"%'),
+                )
+        return deleted
+
+    def _verify_employee_key(self, access_key: str) -> AuthAccount | None:
+        normalized = access_key.replace(" ", "").replace("-", "").upper()
+        with self._connection() as conn:
+            self._ensure_employees(conn)
+            rows = conn.execute(
+                "SELECT id, full_name, email, role, key_salt, key_hash FROM employees"
+            ).fetchall()
+        for row in rows:
+            if secrets.compare_digest(self._employee_hash(row[4], normalized), row[5]):
+                role: Role = row[3] if row[3] in ROLE_PERMISSIONS else "engineer"
+                return AuthAccount(
+                    id=row[0],
+                    full_name=row[1],
+                    email=row[2],
+                    role=role,
+                    permissions=ROLE_PERMISSIONS[role],
+                )
+        return None
+
     def login_reserved(self, access_key: str, client_id: str) -> AuthLoginResponse | None:
-        account = self._verify_key(access_key)
+        account = self._verify_key(access_key) or self._verify_employee_key(access_key)
         if account is None:
             return None
         self.clear_login_failures(client_id)

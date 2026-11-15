@@ -48,6 +48,8 @@ import ru.cyber102.arinspector.data.repository.ApiResult
 import ru.cyber102.arinspector.ui.components.EngineeringCard
 import ru.cyber102.arinspector.ui.components.PrimaryActionButton
 import ru.cyber102.arinspector.ui.components.SecondaryActionButton
+import ru.cyber102.arinspector.ui.employees.EmployeesScreen
+import ru.cyber102.arinspector.ui.employees.EmployeesViewModel
 import ru.cyber102.arinspector.ui.login.LoginScreen
 import ru.cyber102.arinspector.ui.settings.ServerAddressDialog
 import ru.cyber102.arinspector.ui.login.LoginViewModel
@@ -65,6 +67,7 @@ object Routes {
     const val LOGIN = "login"
     const val SCANNER = "scanner"
     const val TASKS = "tasks"
+    const val EMPLOYEES = "employees"
     const val TASK_DETAIL = "task/{id}"
     const val SETTINGS = "settings"
 
@@ -109,8 +112,13 @@ fun PromScanRootApp(container: AppContainer) {
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val showBottomBar = currentRoute == Routes.SCANNER || currentRoute == Routes.TASKS
     val currentAccount by container.repository.currentAccount.collectAsStateWithLifecycle()
+    val canManageUsers = currentAccount?.hasPermission("users") == true ||
+        currentAccount?.role in listOf("director", "admin")
+    val isDirector = currentAccount?.role == "director"
+    val showBottomBar = currentRoute == Routes.SCANNER ||
+        currentRoute == Routes.TASKS ||
+        (canManageUsers && currentRoute == Routes.EMPLOYEES)
 
     Scaffold(
         containerColor = KstColors.Background,
@@ -119,6 +127,7 @@ fun PromScanRootApp(container: AppContainer) {
             if (showBottomBar) {
                 PromScanBottomBar(
                     currentRoute = currentRoute,
+                    canManageUsers = canManageUsers,
                     onNavigate = { targetRoute ->
                         navController.navigate(targetRoute) {
                             popUpTo(navController.graph.findStartDestination().id) {
@@ -221,6 +230,16 @@ fun PromScanRootApp(container: AppContainer) {
                 )
             }
 
+            composable(Routes.EMPLOYEES) {
+                val vm: EmployeesViewModel = viewModel(
+                    factory = EmployeesViewModel.Factory(container.repository)
+                )
+                EmployeesScreen(
+                    viewModel = vm,
+                    isDirector = isDirector
+                )
+            }
+
             composable(
                 route = Routes.TASK_DETAIL,
                 arguments = listOf(navArgument("id") { type = NavType.StringType })
@@ -266,6 +285,7 @@ fun PromScanRootApp(container: AppContainer) {
 @Composable
 private fun PromScanBottomBar(
     currentRoute: String?,
+    canManageUsers: Boolean,
     onNavigate: (String) -> Unit
 ) {
     NavigationBar(
@@ -312,6 +332,28 @@ private fun PromScanBottomBar(
             ),
             modifier = Modifier.testTag("bottom_nav_tasks")
         )
+        if (canManageUsers) {
+            NavigationBarItem(
+                selected = currentRoute == Routes.EMPLOYEES,
+                onClick = { onNavigate(Routes.EMPLOYEES) },
+                icon = {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_people),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp)
+                    )
+                },
+                label = { Text(stringResource(R.string.nav_employees)) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = KstColors.Accent,
+                    selectedTextColor = KstColors.Accent,
+                    indicatorColor = KstColors.AccentTint,
+                    unselectedIconColor = KstColors.TextSecondary,
+                    unselectedTextColor = KstColors.TextSecondary
+                ),
+                modifier = Modifier.testTag("bottom_nav_employees")
+            )
+        }
     }
 }
 

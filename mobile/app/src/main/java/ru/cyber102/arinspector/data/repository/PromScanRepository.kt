@@ -17,6 +17,9 @@ import ru.cyber102.arinspector.data.local.SettingsStore
 import ru.cyber102.arinspector.data.local.TokenStore
 import ru.cyber102.arinspector.data.model.AccountDto
 import ru.cyber102.arinspector.data.model.DetailedInspectResponse
+import ru.cyber102.arinspector.data.model.EmployeeCreateResponse
+import ru.cyber102.arinspector.data.model.EmployeeCreateRequest
+import ru.cyber102.arinspector.data.model.EmployeeDto
 import ru.cyber102.arinspector.data.model.EquipmentDto
 import ru.cyber102.arinspector.data.model.InspectOutcome
 import ru.cyber102.arinspector.data.model.InspectResponse
@@ -259,6 +262,18 @@ class PromScanRepository(
             api.updateReportStatus(id, UpdateReportStatusRequest(status = status, comment = comment))
         }
     }
+
+    suspend fun getEmployees(): ApiResult<List<EmployeeDto>> = safeCall { api.getEmployees() }
+
+    suspend fun createEmployee(
+        fullName: String,
+        email: String,
+        role: String
+    ): ApiResult<EmployeeCreateResponse> = safeCall {
+        api.createEmployee(EmployeeCreateRequest(fullName, email, role))
+    }
+
+    suspend fun deleteEmployee(id: String): ApiResult<Unit> = safeCall { api.deleteEmployee(id) }
 
     private suspend fun <T> safeCall(
         notifyUnauthorized: Boolean = true,

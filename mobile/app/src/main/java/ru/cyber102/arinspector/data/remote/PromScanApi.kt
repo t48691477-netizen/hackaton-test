@@ -4,6 +4,7 @@ import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
@@ -13,6 +14,9 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 import ru.cyber102.arinspector.data.model.AccountDto
 import ru.cyber102.arinspector.data.model.DetailedInspectResponse
+import ru.cyber102.arinspector.data.model.EmployeeCreateRequest
+import ru.cyber102.arinspector.data.model.EmployeeCreateResponse
+import ru.cyber102.arinspector.data.model.EmployeeDto
 import ru.cyber102.arinspector.data.model.EquipmentDto
 import ru.cyber102.arinspector.data.model.LoginRequest
 import ru.cyber102.arinspector.data.model.LoginResponse
@@ -82,4 +86,13 @@ interface PromScanApi {
         @Path("id") id: String,
         @Body body: UpdateReportStatusRequest
     ): Response<ReportDto>
+
+    @GET("front/api/employees")
+    suspend fun getEmployees(): Response<List<EmployeeDto>>
+
+    @POST("front/api/employees")
+    suspend fun createEmployee(@Body body: EmployeeCreateRequest): Response<EmployeeCreateResponse>
+
+    @DELETE("front/api/employees/{id}")
+    suspend fun deleteEmployee(@Path("id") id: String): Response<Unit>
 }
