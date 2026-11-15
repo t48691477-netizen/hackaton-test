@@ -6,12 +6,18 @@ import { AppRoutes } from '../App';
 import { RoleProvider } from '../context/RoleContext';
 import { verifyAccessKey } from '../lib/accessKeys';
 import { readMockOutbox } from '../lib/email';
-import { findEmployeeById } from '../lib/employees';
+import {
+  MOCK_EMPLOYEES,
+  findEmployeeById,
+  loadEmployees,
+  saveEmployees,
+  type Employee,
+} from '../lib/employees';
 
-function renderUsers() {
+function renderUsers(role: 'director' | 'admin' = 'director') {
   return render(
     <MemoryRouter initialEntries={['/users']}>
-      <RoleProvider initialRole="director">
+      <RoleProvider initialRole={role}>
         <AppRoutes />
       </RoleProvider>
     </MemoryRouter>,
@@ -211,5 +217,48 @@ describe('страница сотрудников', () => {
     const employee = findEmployeeById('emp-001');
     expect(employee).not.toBeNull();
     expect(await verifyAccessKey('PSCDSP4826', employee!)).toBe(false);
+  });
+
+  it('удаляет сотрудника после подтверждения', async () => {
+    const user = userEvent.setup();
+    renderUsers('admin');
+
+    await user.click(
+      screen.getAllByRole('button', { name: 'Удалить сотрудника: Иван Иванов' })[0],
+    );
+    const dialog = await screen.findByRole('alertdialog', {
+      name: /Удалить Иван Иванов/,
+    });
+    await user.click(within(dialog).getByRole('button', { name: 'Отмена' }));
+    expect(findEmployeeById('emp-001')).not.toBeNull();
+
+    await user.click(
+      screen.getAllByRole('button', { name: 'Удалить сотрудника: Иван Иванов' })[0],
+    );
+    const confirm = await screen.findByRole('alertdialog');
+    await user.click(within(confirm).getByRole('button', { name: 'Удалить' }));
+
+    expect(findEmployeeById('emp-001')).toBeNull();
+    expect(screen.queryByText('Иван Иванов')).not.toBeInTheDocument();
+    expect(loadEmployees()).toHaveLength(MOCK_EMPLOYEES.length - 1);
+  });
+
+  it('администратор не может удалить другого администратора', () => {
+    const admin: Employee = {
+      ...MOCK_EMPLOYEES[0],
+      id: 'emp-admin',
+      fullName: 'Пётр Админов',
+      email: 'p.adminov@promscan.ru',
+      role: 'admin',
+    };
+    saveEmployees([admin, ...MOCK_EMPLOYEES]);
+    renderUsers('admin');
+
+    expect(
+      screen.getAllByRole('button', { name: 'Удалить сотрудника: Пётр Админов' })[0],
+    ).toBeDisabled();
+    expect(
+      screen.getAllByRole('button', { name: 'Удалить сотрудника: Иван Иванов' })[0],
+    ).toBeEnabled();
   });
 });

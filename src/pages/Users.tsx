@@ -14,6 +14,7 @@ import {
   Mail,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   UserPlus,
   X,
 } from 'lucide-react';
@@ -263,6 +264,85 @@ function KeyDeliveryDialog({
           <button type="button" onClick={onClose} className="btn-primary w-full">
             Готово
           </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+interface DeleteEmployeeDialogProps {
+  employee: Employee;
+  restoreFocus: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+function DeleteEmployeeDialog({
+  employee,
+  restoreFocus,
+  onCancel,
+  onConfirm,
+}: DeleteEmployeeDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(dialogRef, {
+    initialFocus: 'button[data-autofocus]',
+    onEscape: onCancel,
+    restoreFocus,
+  });
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] grid place-items-center px-4 py-6">
+      <div
+        onClick={onCancel}
+        className="absolute inset-0 bg-black/45"
+        aria-hidden="true"
+      />
+
+      <div
+        ref={dialogRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-employee-title"
+        className="relative w-full max-w-[460px] rounded-xl border border-line bg-panel shadow-sheet"
+      >
+        <div className="border-b border-line px-5 py-5 sm:px-7">
+          <p className="eyebrow">Удаление сотрудника</p>
+          <h2
+            id="delete-employee-title"
+            className="mt-2 text-2xl font-medium text-ink"
+          >
+            Удалить {employee.fullName}?
+          </h2>
+          <p className="mt-2 text-xs leading-5 text-muted">
+            {employee.email} · {ROLE_LABELS[employee.role]}
+          </p>
+        </div>
+
+        <div className="space-y-5 px-5 py-6 sm:px-7">
+          <p className="text-sm leading-6 text-soft">
+            Учётная запись и ключ доступа будут удалены, сотрудник больше не
+            сможет войти. Действие нельзя отменить.
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              data-autofocus
+              onClick={onCancel}
+              className="btn-secondary flex-1"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="btn-primary flex-1"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+              Удалить
+            </button>
+          </div>
         </div>
       </div>
     </div>,
@@ -609,6 +689,7 @@ export function Users() {
   const [employees, setEmployees] = useState<Employee[]>(() => loadEmployees());
   const [modalOpen, setModalOpen] = useState(false);
   const [delivery, setDelivery] = useState<ProvisionedEmployee | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
   const addEmployeeButtonRef = useRef<HTMLButtonElement>(null);
@@ -700,6 +781,28 @@ export function Users() {
     },
     [busyId, persist, role],
   );
+
+  const handleDelete = useCallback(() => {
+    const target = deleteTarget;
+    setDeleteTarget(null);
+
+    if (!target) return;
+    if (role !== 'director' && role !== 'admin') return;
+
+    if (role === 'admin' && target.role === 'admin') {
+      setActionError('Удалять администраторов может только директор.');
+      return;
+    }
+
+    setActionError('');
+    const saved = persist(loadEmployees().filter((item) => item.id !== target.id));
+
+    if (!saved) {
+      setActionError(
+        'Не удалось удалить сотрудника: хранилище браузера недоступно.',
+      );
+    }
+  }, [deleteTarget, persist, role]);
 
   // Дополнительная проверка поверх RoleGuard: прямой вызов компонента
   // не должен раскрывать таблицу сотрудников.
@@ -805,6 +908,7 @@ export function Users() {
               const roleMeta = EMPLOYEE_ROLE_META[employee.role];
               const canReissue =
                 role === 'director' || employee.role !== 'admin';
+              const canDelete = canReissue;
 
               return (
                 <article
@@ -870,6 +974,21 @@ export function Users() {
                       />
                       Перевыпустить
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(employee)}
+                      disabled={busyId === employee.id || !canDelete}
+                      aria-label={`Удалить сотрудника: ${employee.fullName}`}
+                      title={
+                        canDelete
+                          ? undefined
+                          : 'Администраторов удаляет только директор'
+                      }
+                      className="inline-flex h-11 items-center gap-1.5 border border-line px-3 text-xs text-muted transition-colors hover:border-danger/40 hover:text-danger disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3 w-3" aria-hidden="true" />
+                      Удалить
+                    </button>
                   </div>
                   <p className="mt-1.5 text-xs text-faint">
                     создан {employee.keyCreatedAt.slice(0, 10)}
@@ -902,6 +1021,7 @@ export function Users() {
                 const roleMeta = EMPLOYEE_ROLE_META[employee.role];
                 const canReissue =
                   role === 'director' || employee.role !== 'admin';
+                const canDelete = canReissue;
 
                 return (
                   <tr
@@ -971,6 +1091,21 @@ export function Users() {
                           />
                           Перевыпустить
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(employee)}
+                          disabled={busyId === employee.id || !canDelete}
+                          aria-label={`Удалить сотрудника: ${employee.fullName}`}
+                          title={
+                            canDelete
+                              ? undefined
+                              : 'Администраторов удаляет только директор'
+                          }
+                          className="inline-flex h-11 items-center gap-1.5 border border-line px-3 text-xs text-muted transition-colors hover:border-danger/40 hover:text-danger disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3 w-3" aria-hidden="true" />
+                          Удалить
+                        </button>
                       </div>
                       <p className="mt-1.5 text-xs text-faint">
                         создан {employee.keyCreatedAt.slice(0, 10)}
@@ -999,6 +1134,15 @@ export function Users() {
           restoreFocus={() => addEmployeeButtonRef.current?.focus()}
           onClose={closeModal}
           onCreated={handleCreated}
+        />
+      ) : null}
+
+      {deleteTarget ? (
+        <DeleteEmployeeDialog
+          employee={deleteTarget}
+          restoreFocus={() => addEmployeeButtonRef.current?.focus()}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={handleDelete}
         />
       ) : null}
 

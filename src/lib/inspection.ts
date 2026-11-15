@@ -131,25 +131,6 @@ export interface ConditionParameters {
   poor_weld_probability: number | null;
 }
 
-export interface DetailedFinding {
-  title: string;
-  description: string;
-  severity: Severity;
-  recommendation: string;
-}
-
-export interface DetailedAnalysisResult {
-  analysis_id: string;
-  inspection_id: string;
-  summary: string;
-  findings: DetailedFinding[];
-  probable_causes: string[];
-  recommendation_steps: string[];
-  models: string[];
-  processing_ms: number;
-  analyzed_at: string;
-}
-
 /**
  * Отчёт — это и акт осмотра, и задача на восстановление.
  *

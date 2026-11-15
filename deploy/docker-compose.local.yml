@@ -1,0 +1,23 @@
+name: promscan-local
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      TOIR_CORS_ORIGINS: "*"
+      TOIR_DISABLE_DOCS: "true"
+      TOIR_ACCESS_KEY_HASH: ${TOIR_ACCESS_KEY_HASH:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - api_data:/app/data
+      - uploaded_images:/app/static/uploads
+
+volumes:
+  api_data:
+  uploaded_images:

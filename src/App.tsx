@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { RoleGuard } from './components/RoleGuard';
+import { ServerAddressDialog } from './components/ServerAddressDialog';
 import { Unauthorized } from './components/Unauthorized';
 import { RoleProvider, useRole } from './context/RoleContext';
 import { Defects } from './pages/Defects';
@@ -45,7 +46,9 @@ export function AppRoutes() {
   }
 
   return (
-    <Routes>
+    <>
+      <ServerAddressDialog />
+      <Routes>
       {/* Карточка задания открывается вне Layout, без боковой панели. */}
       <Route path="task/:id" element={<Task />} />
       <Route element={<Layout />}>
@@ -69,7 +72,8 @@ export function AppRoutes() {
         />
         <Route path="*" element={<Navigate to="/scanner" replace />} />
       </Route>
-    </Routes>
+      </Routes>
+    </>
   );
 }
 

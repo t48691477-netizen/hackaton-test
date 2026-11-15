@@ -11,11 +11,11 @@ import {
   Copy,
   Crosshair,
   ExternalLink,
-  FileSearch,
   Gauge,
   Info,
   Loader2,
   Maximize2,
+  QrCode,
   Minimize2,
   MousePointer2,
   Radio,
@@ -33,7 +33,6 @@ import {
   fetchEquipmentById,
   fetchTelemetry,
   inspectImage,
-  requestDetailedAnalysis,
 } from '../lib/api';
 import {
   EMPLOYEES_CHANGED_EVENT,
@@ -44,7 +43,6 @@ import {
 import {
   getEquipmentNode,
   type Defect,
-  type DetailedAnalysisResult,
   type EquipmentDetail,
   type EquipmentNode,
   type InspectionResult,
@@ -53,6 +51,7 @@ import {
   type SpecItem,
   type TelemetryData,
 } from '../lib/inspection';
+import { decodeQrFromVideo } from '../lib/qr';
 import { useFocusTrap } from '../lib/useFocusTrap';
 
 type ScannerStatus = 'starting' | 'live' | 'ready' | 'error';
@@ -672,58 +671,6 @@ function ReportCreateForm({
   );
 }
 
-function DetailedAnalysisView({ result }: { result: DetailedAnalysisResult }) {
-  return (
-    <div className="mt-4 border border-line bg-raised p-4" aria-live="polite">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-ink">Подробный анализ</h3>
-        <span className="text-xs text-muted">{result.processing_ms} мс</span>
-      </div>
-      <p className="mt-1 break-all text-xs leading-4 text-faint">
-        Осмотр {result.inspection_id}
-      </p>
-      <p className="mt-2 text-sm leading-6 text-soft">{result.summary}</p>
-      {result.findings.length > 0 ? (
-        <ul className="mt-4 divide-y divide-line border-y border-line">
-          {result.findings.map((finding, index) => (
-            <li key={`${finding.title}-${index}`} className="py-3">
-              <div className="flex items-start justify-between gap-3">
-                <h4 className="text-sm font-semibold text-ink">{finding.title}</h4>
-                <span className={`shrink-0 text-xs ${SEVERITY_META[finding.severity].text}`}>
-                  {SEVERITY_META[finding.severity].label}
-                </span>
-              </div>
-              <p className="mt-1 text-xs leading-5 text-muted">{finding.description}</p>
-              <p className="mt-2 text-xs leading-5 text-soft">{finding.recommendation}</p>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {result.probable_causes.length > 0 ? (
-        <div className="mt-4">
-          <h4 className="technical">Вероятные причины</h4>
-          <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-soft">
-            {result.probable_causes.map((cause) => <li key={cause}>{cause}</li>)}
-          </ul>
-        </div>
-      ) : null}
-      {result.recommendation_steps.length > 0 ? (
-        <div className="mt-4">
-          <h4 className="technical">Рекомендуемые действия</h4>
-          <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-5 text-soft">
-            {result.recommendation_steps.map((step, index) => (
-              <li key={`${index}-${step}`}>{step}</li>
-            ))}
-          </ol>
-        </div>
-      ) : null}
-      <p className="mt-4 break-words text-xs leading-4 text-faint">
-        Модели: {result.models.join(', ') || 'не указаны'}
-      </p>
-    </div>
-  );
-}
-
 function TelemetryWidget({
   equipmentId,
   initialTelemetry,
@@ -914,7 +861,6 @@ interface LiveReportProps {
   activeNode: EquipmentNode | null;
   selectedId: string | null;
   snapshotPhoto: Blob | null;
-  analysisPhoto: Blob | null;
   engineers: Employee[];
   onHover: (id: string | null) => void;
   onFocus: (id: string | null) => void;
@@ -927,7 +873,6 @@ function LiveReport({
   activeNode,
   selectedId,
   snapshotPhoto,
-  analysisPhoto,
   engineers,
   onHover,
   onFocus,
@@ -941,16 +886,9 @@ function LiveReport({
     message?: string;
   }>({ equipmentId: analysis.equipment.id, status: 'idle' });
   const [equipmentRetry, setEquipmentRetry] = useState(0);
-  const [detailedState, setDetailedState] = useState<{
-    inspectionId: string;
-    status: 'idle' | 'loading' | 'ready' | 'error';
-    result?: DetailedAnalysisResult;
-    message?: string;
-  }>({ inspectionId: analysis.inspection_id, status: 'idle' });
   const equipmentRequestIdRef = useRef(0);
   const equipmentCacheRef = useRef(new Map<string, EquipmentDetail>());
   const equipmentRequestsRef = useRef(new Map<string, Promise<EquipmentDetail>>());
-  const detailedRequestIdRef = useRef(0);
   const reportButtonRef = useRef<HTMLButtonElement>(null);
   const activeDefectId = activeDefect?.id ?? null;
   const activeMeta = activeDefect
@@ -1021,7 +959,6 @@ function LiveReport({
 
   useEffect(() => () => {
     equipmentRequestIdRef.current += 1;
-    detailedRequestIdRef.current += 1;
   }, []);
 
   const visibleEquipmentState = equipmentState.equipmentId === analysis.equipment.id
@@ -1034,45 +971,6 @@ function LiveReport({
     ? equipmentDetail.nodes.find((node) => node.id === activeDefect.node_id) ?? null
     : null;
   const displayedEquipment = equipmentDetail ?? analysis.equipment;
-
-  const handleDetailedAnalysis = async () => {
-    if (
-      !analysisPhoto ||
-      (detailedState.inspectionId === analysis.inspection_id && detailedState.status === 'loading')
-    ) return;
-
-    const requestId = ++detailedRequestIdRef.current;
-    const inspectionId = analysis.inspection_id;
-    setDetailedState({ inspectionId, status: 'loading' });
-
-    try {
-      const result = await requestDetailedAnalysis({
-        image: analysisPhoto,
-        inspection: analysis,
-        conditionParameters: analysis.condition_parameters,
-      });
-      if (result.inspection_id !== inspectionId) {
-        throw new Error('Backend вернул подробный анализ для другого осмотра.');
-      }
-      if (requestId === detailedRequestIdRef.current) {
-        setDetailedState({ inspectionId, status: 'ready', result });
-      }
-    } catch (requestError) {
-      if (requestId === detailedRequestIdRef.current) {
-        setDetailedState({
-          inspectionId,
-          status: 'error',
-          message: requestError instanceof Error
-            ? requestError.message
-            : 'Не удалось получить подробный анализ.',
-        });
-      }
-    }
-  };
-
-  const visibleDetailedState = detailedState.inspectionId === analysis.inspection_id
-    ? detailedState
-    : { inspectionId: analysis.inspection_id, status: 'idle' as const };
 
   return (
     <div className="animate-fade-in rounded-xl border border-line bg-panel">
@@ -1132,33 +1030,6 @@ function LiveReport({
           equipmentId={displayedEquipment.id}
           initialTelemetry={displayedEquipment.telemetry ?? analysis.equipment.telemetry}
         />
-
-        <section className="mt-5" aria-label="Подробный анализ дефектов">
-          <button
-            type="button"
-            className="btn-primary w-full"
-            onClick={() => void handleDetailedAnalysis()}
-            disabled={!analysisPhoto || visibleDetailedState.status === 'loading'}
-          >
-            {visibleDetailedState.status === 'loading'
-              ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              : <FileSearch className="h-4 w-4" aria-hidden="true" />}
-            {visibleDetailedState.status === 'loading' ? 'Запрашиваем анализ…' : 'более точный отчет'}
-          </button>
-          {!analysisPhoto ? (
-            <p className="mt-2 text-xs leading-5 text-muted">
-              Ожидается кадр, использованный для последнего realtime-результата.
-            </p>
-          ) : null}
-          {visibleDetailedState.status === 'error' ? (
-            <p className="mt-2 text-xs leading-5 text-danger" role="alert">
-              {visibleDetailedState.message}
-            </p>
-          ) : null}
-          {visibleDetailedState.status === 'ready' && visibleDetailedState.result ? (
-            <DetailedAnalysisView result={visibleDetailedState.result} />
-          ) : null}
-        </section>
 
         <section
           id="equipment-specs-panel"
@@ -1654,13 +1525,78 @@ function FullscreenCameraView({
   );
 }
 
+function QrEquipmentCard({
+  state,
+  onClear,
+}: {
+  state: {
+    id: string;
+    status: 'loading' | 'ready' | 'error';
+    detail?: EquipmentDetail;
+    message?: string;
+  };
+  onClear: () => void;
+}) {
+  const detail = state.detail;
+
+  return (
+    <section
+      className="mb-5 rounded-xl border border-accent/40 bg-panel p-4 sm:p-5"
+      aria-label="Оборудование по QR-коду"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="eyebrow flex items-center gap-1.5">
+            <QrCode className="h-3.5 w-3.5" aria-hidden="true" />
+            QR-код распознан
+          </p>
+          <h2 className="mt-2 text-lg font-medium text-ink">
+            {detail?.name ?? state.id}
+          </h2>
+          {detail ? (
+            <p className="mt-1 text-xs leading-5 text-muted">
+              {detail.manufacturer} · {detail.model} · инв. № {detail.inventory_number}
+            </p>
+          ) : null}
+        </div>
+        <button type="button" className="btn-secondary shrink-0" onClick={onClear}>
+          Сбросить
+        </button>
+      </div>
+
+      {state.status === 'loading' ? (
+        <p className="mt-3 flex items-center gap-2 text-xs text-muted" role="status">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          Загружаем технические характеристики…
+        </p>
+      ) : null}
+      {state.status === 'error' ? (
+        <p className="mt-3 text-xs leading-5 text-danger" role="alert">
+          {state.message}
+        </p>
+      ) : null}
+      {detail ? (
+        <>
+          <p className="mt-2 text-xs leading-5 text-muted">
+            {detail.category} · {detail.location}
+          </p>
+          <h3 className="technical mt-4">Технические характеристики</h3>
+          <SpecGrid specs={detail.specs} />
+          <p className="mt-3 text-xs text-faint">
+            ТО: {formatDate(detail.last_maintenance_at)} → {formatDate(detail.next_maintenance_at)}
+          </p>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 export function Scanner() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const requestIdRef = useRef(0);
   const tickRef = useRef(0);
   const imageBlobRef = useRef<Blob | null>(null);
-  const [analysisImage, setAnalysisImage] = useState<Blob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [status, setStatus] = useState<ScannerStatus>('starting');
@@ -1684,6 +1620,64 @@ export function Scanner() {
   );
   const fullscreenTriggerRef = useRef<HTMLButtonElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [qrId, setQrId] = useState<string | null>(null);
+  const qrIdRef = useRef<string | null>(null);
+  const [qrEquipment, setQrEquipment] = useState<{
+    id: string;
+    status: 'loading' | 'ready' | 'error';
+    detail?: EquipmentDetail;
+    message?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    qrIdRef.current = qrId;
+  }, [qrId]);
+
+  useEffect(() => {
+    if (status !== 'live') return;
+
+    const canvas = document.createElement('canvas');
+    const timer = window.setInterval(() => {
+      const video = videoRef.current;
+      if (!video) return;
+      const found = decodeQrFromVideo(video, canvas);
+      if (found && found !== qrIdRef.current) {
+        qrIdRef.current = found;
+        setQrId(found);
+      }
+    }, 400);
+
+    return () => window.clearInterval(timer);
+  }, [status]);
+
+  useEffect(() => {
+    if (!qrId) {
+      setQrEquipment(null);
+      return;
+    }
+
+    let cancelled = false;
+    setQrEquipment({ id: qrId, status: 'loading' });
+    fetchEquipmentById(qrId)
+      .then((detail) => {
+        if (!cancelled) setQrEquipment({ id: qrId, status: 'ready', detail });
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) {
+          setQrEquipment({
+            id: qrId,
+            status: 'error',
+            message: reason instanceof Error
+              ? `Оборудование ${qrId} не найдено: ${reason.message}`
+              : `Оборудование ${qrId} не найдено.`,
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [qrId]);
 
   useEffect(() => {
     const refresh = () => setEngineers(getEngineers(loadEmployees()));
@@ -1717,7 +1711,6 @@ export function Scanner() {
       setError(null);
       setSnapshot(null);
       setAnalysis(null);
-      setAnalysisImage(null);
       setHoveredDefectId(null);
       setFocusedDefectId(null);
       setSelectedDefectId(null);
@@ -1869,10 +1862,9 @@ export function Scanner() {
           return;
         }
 
-        const result = await inspectImage(frame, 'pump-cns-38-220', tick);
+        const result = await inspectImage(frame, qrIdRef.current ?? 'pump-cns-38-220', tick);
 
         if (!cancelled) {
-          setAnalysisImage(frame ?? imageBlobRef.current);
           setAnalysis(result);
           setLiveError(null);
         }
@@ -1932,7 +1924,6 @@ export function Scanner() {
   const handleReset = useCallback(() => {
     setSnapshot(null);
     setAnalysis(null);
-    setAnalysisImage(null);
     setHoveredDefectId(null);
     setFocusedDefectId(null);
     setSelectedDefectId(null);
@@ -1981,8 +1972,7 @@ export function Scanner() {
           stopStream();
           tickRef.current = 0;
           imageBlobRef.current = file;
-          setAnalysisImage(null);
-          setSnapshot({
+              setSnapshot({
             src,
             width: image.naturalWidth || 1280,
             height: image.naturalHeight || 720,
@@ -2230,6 +2220,15 @@ export function Scanner() {
         </section>
 
         <aside className="min-w-0" aria-label="Результат распознавания">
+          {qrEquipment ? (
+            <QrEquipmentCard
+              state={qrEquipment}
+              onClear={() => {
+                qrIdRef.current = null;
+                setQrId(null);
+              }}
+            />
+          ) : null}
           {analysis ? (
             <LiveReport
               analysis={analysis}
@@ -2237,7 +2236,6 @@ export function Scanner() {
               activeNode={activeNode}
               selectedId={selectedDefectId}
               snapshotPhoto={snapshot ? imageBlobRef.current : null}
-              analysisPhoto={analysisImage}
               engineers={engineers}
               onHover={setHoveredDefectId}
               onFocus={setFocusedDefectId}

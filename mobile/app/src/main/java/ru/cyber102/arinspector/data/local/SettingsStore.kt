@@ -52,6 +52,10 @@ class SettingsStore(context: Context) {
         AppSettings(serverUrl = url, analysisIntervalMs = intervalMs, analysisIntervalSec = currentIntervalSec)
     }
 
+    val hasServerUrlFlow: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_SERVER_URL] != null
+    }
+
     init {
         scope.launch {
             settingsFlow.collect { }

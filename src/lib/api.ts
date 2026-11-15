@@ -15,8 +15,6 @@ import {
   MOCK_EQUIPMENT_LIST,
   MOCK_REPORTS,
   createMockInspection,
-  type ConditionParameters,
-  type DetailedAnalysisResult,
   type EquipmentDetail,
   type EquipmentSummary,
   type InspectionResult,
@@ -24,20 +22,26 @@ import {
   type ReportStatus,
   type TelemetryData,
 } from './inspection';
+import { getServerUrl } from './serverConfig';
 import {
   findEmployeeById,
   loadEmployees,
   toEmployeeRef,
 } from './employees';
 
-const BASE_URL = (
+const ENV_BASE_URL = (
   import.meta.env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 ).replace(/\/+$/, '');
 
 export const API_CONFIG = {
-  baseUrl: BASE_URL,
-  useMock: (import.meta.env?.VITE_USE_MOCK_API ?? 'true') !== 'false',
-} as const;
+  get baseUrl(): string {
+    return (getServerUrl() ?? ENV_BASE_URL).replace(/\/+$/, '');
+  },
+  get useMock(): boolean {
+    if (getServerUrl()) return false;
+    return (import.meta.env?.VITE_USE_MOCK_API ?? 'true') !== 'false';
+  },
+};
 
 export class ApiError extends Error {
   readonly status: number;
@@ -187,7 +191,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set('Accept', 'application/json');
 
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const response = await fetch(`${API_CONFIG.baseUrl}${path}`, {
     ...init,
     headers,
   });
@@ -325,33 +329,6 @@ export async function sendAccessKeyMail(
       role: payload.role,
       access_key: payload.accessKey,
     }),
-  });
-}
-
-export interface DetailedAnalysisInput {
-  image: Blob;
-  inspection: InspectionResult;
-  conditionParameters: ConditionParameters;
-}
-
-/** Proposed endpoint only; the backend implementation has not been connected. */
-export async function requestDetailedAnalysis({
-  image,
-  inspection,
-  conditionParameters,
-}: DetailedAnalysisInput): Promise<DetailedAnalysisResult> {
-  if (API_CONFIG.useMock) {
-    throw new ApiError(501, 'Подробный анализ доступен после подключения backend.');
-  }
-
-  const form = new FormData();
-  form.append('file', image, 'frame.jpg');
-  form.append('inspection', JSON.stringify(inspection));
-  form.append('condition_parameters', JSON.stringify(conditionParameters));
-
-  return request<DetailedAnalysisResult>('/api/inspect/detailed', {
-    method: 'POST',
-    body: form,
   });
 }
 

@@ -49,6 +49,7 @@ import ru.cyber102.arinspector.ui.components.EngineeringCard
 import ru.cyber102.arinspector.ui.components.PrimaryActionButton
 import ru.cyber102.arinspector.ui.components.SecondaryActionButton
 import ru.cyber102.arinspector.ui.login.LoginScreen
+import ru.cyber102.arinspector.ui.settings.ServerAddressDialog
 import ru.cyber102.arinspector.ui.login.LoginViewModel
 import ru.cyber102.arinspector.ui.scanner.ScannerScreen
 import ru.cyber102.arinspector.ui.scanner.ScannerViewModel
@@ -142,6 +143,15 @@ fun PromScanRootApp(container: AppContainer) {
                 val vm: LoginViewModel = viewModel(
                     factory = LoginViewModel.Factory(container.repository)
                 )
+                val hasServerUrl by container.settingsStore.hasServerUrlFlow
+                    .collectAsStateWithLifecycle(initialValue = true)
+                if (!hasServerUrl) {
+                    ServerAddressDialog(
+                        onConfirm = { url ->
+                            scope.launch { container.settingsStore.saveServerUrl(url) }
+                        }
+                    )
+                }
                 LoginScreen(
                     viewModel = vm,
                     onLoginSuccess = {
