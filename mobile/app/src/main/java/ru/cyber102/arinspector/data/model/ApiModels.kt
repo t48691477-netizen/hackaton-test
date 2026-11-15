@@ -109,27 +109,6 @@ data class InspectResponse(
 )
 
 @JsonClass(generateAdapter = true)
-data class DetailedFindingDto(
-    @Json(name = "title") val title: String? = null,
-    @Json(name = "description") val description: String? = null,
-    @Json(name = "severity") val severity: String? = null,
-    @Json(name = "recommendation") val recommendation: String? = null
-)
-
-@JsonClass(generateAdapter = true)
-data class DetailedInspectResponse(
-    @Json(name = "analysis_id") val analysisId: String? = null,
-    @Json(name = "inspection_id") val inspectionId: String? = null,
-    @Json(name = "summary") val summary: String? = null,
-    @Json(name = "findings") val findings: List<DetailedFindingDto>? = null,
-    @Json(name = "probable_causes") val probableCauses: List<String>? = null,
-    @Json(name = "recommendation_steps") val recommendationSteps: List<String>? = null,
-    @Json(name = "models") val models: List<String>? = null,
-    @Json(name = "processing_ms") val processingMs: Int? = null,
-    @Json(name = "analyzed_at") val analyzedAt: String? = null
-)
-
-@JsonClass(generateAdapter = true)
 data class AssigneeDto(
     @Json(name = "id") val id: String? = null,
     @Json(name = "full_name") val fullName: String? = null
@@ -160,6 +139,5 @@ data class UpdateReportStatusRequest(
 
 data class InspectOutcome(
     val parsed: InspectResponse,
-    val rawJson: String,
-    val conditionParametersJson: String
+    val rawJson: String
 )

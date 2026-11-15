@@ -16,7 +16,6 @@ import retrofit2.Response
 import ru.cyber102.arinspector.data.local.SettingsStore
 import ru.cyber102.arinspector.data.local.TokenStore
 import ru.cyber102.arinspector.data.model.AccountDto
-import ru.cyber102.arinspector.data.model.DetailedInspectResponse
 import ru.cyber102.arinspector.data.model.EquipmentDto
 import ru.cyber102.arinspector.data.model.InspectOutcome
 import ru.cyber102.arinspector.data.model.InspectResponse
@@ -167,12 +166,10 @@ class PromScanRepository(
                 }
                 val parsed = moshi.adapter(InspectResponse::class.java).fromJson(rawJson)
                     ?: return ApiResult.Error("Не удалось разобрать ответ сервера", response.code())
-                val conditionJson = extractConditionParametersJson(rawJson)
                 ApiResult.Success(
                     InspectOutcome(
                         parsed = parsed,
-                        rawJson = rawJson,
-                        conditionParametersJson = conditionJson
+                        rawJson = rawJson
                     )
                 )
             } else {
@@ -182,26 +179,6 @@ class PromScanRepository(
             ApiResult.Error("Нет связи с сервером", isNetworkError = true)
         } catch (e: Exception) {
             ApiResult.Error(e.localizedMessage ?: "Ошибка анализа кадра")
-        }
-    }
-
-    suspend fun inspectDetailed(
-        jpegBytes: ByteArray,
-        inspectionRawJson: String,
-        conditionParamsJson: String
-    ): ApiResult<DetailedInspectResponse> {
-        return try {
-            val filePart = MultipartBody.Part.createFormData(
-                "file",
-                "frame.jpg",
-                jpegBytes.toRequestBody("image/jpeg".toMediaType())
-            )
-            val inspectionPart = MultipartBody.Part.createFormData("inspection", inspectionRawJson)
-            val condPart = MultipartBody.Part.createFormData("condition_parameters", conditionParamsJson)
-
-            safeCall { api.inspectDetailed(filePart, inspectionPart, condPart) }
-        } catch (e: Exception) {
-            ApiResult.Error(e.localizedMessage ?: "Ошибка подробного анализа")
         }
     }
 
@@ -296,14 +273,6 @@ class PromScanRepository(
             message = parseErrorMessage(response),
             httpCode = response.code()
         )
-    }
-
-    private fun extractConditionParametersJson(rawJson: String): String {
-        return try {
-            JSONObject(rawJson).optJSONObject("condition_parameters")?.toString() ?: "{}"
-        } catch (_: Exception) {
-            "{}"
-        }
     }
 
     private fun parseErrorMessage(response: Response<*>): String {

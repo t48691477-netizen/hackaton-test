@@ -191,7 +191,6 @@ fun ScannerScreen(
                 InspectionSummaryBottomPanel(
                     uiState = uiState,
                     onToggleAnalysis = viewModel::toggleAnalysis,
-                    onDetailedClick = { viewModel.requestDetailedAnalysis(noFrameMsg) },
                     onCreateReportClick = { viewModel.setShowCreateReportDialog(true, noFrameMsg) },
                     onExportPdfClick = {
                         val eq = uiState.equipment
@@ -257,13 +256,6 @@ fun ScannerScreen(
                 viewModel.openPassportSheet(false)
             },
             onChangeEquipment = { viewModel.clearEquipment() }
-        )
-    }
-
-    if (uiState.showDetailedSheet && uiState.detailedResult != null) {
-        DetailedInspectionSheet(
-            detail = uiState.detailedResult!!,
-            onDismiss = viewModel::dismissDetailedSheet
         )
     }
 
@@ -583,7 +575,6 @@ private fun QrIdleBottomBar(
 private fun InspectionSummaryBottomPanel(
     uiState: ScannerUiState,
     onToggleAnalysis: () -> Unit,
-    onDetailedClick: () -> Unit,
     onCreateReportClick: () -> Unit,
     onExportPdfClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -693,34 +684,6 @@ private fun InspectionSummaryBottomPanel(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
-                    onClick = onDetailedClick,
-                    enabled = !uiState.isDetailedLoading,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp)
-                        .testTag("detailed_conclusion_button"),
-                    shape = PromScanShapesTokens.Control,
-                    border = BorderStroke(1.dp, KstColors.Border),
-                    contentPadding = PaddingValues(horizontal = 6.dp)
-                ) {
-                    if (uiState.isDetailedLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = KstColors.Accent,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text(
-                            text = stringResource(R.string.scanner_conclusion_button),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = KstColors.TextPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
                 OutlinedButton(
                     onClick = onCreateReportClick,
                     modifier = Modifier

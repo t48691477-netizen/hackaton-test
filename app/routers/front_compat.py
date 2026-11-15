@@ -1,25 +1,84 @@
 """Совместимый с React-фронтом (frontend-test) API. Монтируется на /front, не ломает Android-контракт."""
 import json
+import os
+import shlex
 import shutil
 import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from functools import wraps
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import unquote, urlsplit
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.services.detector import defect_detector
 from app.services import mailer
-from app.services.llm_expert import llm_expert_service
-from app.services.storage import storage_service
+from app.services.db import DatabaseError, DatabaseUnavailable
+from app.routers._deps import storage_dep
 
 router = APIRouter(prefix="/front/api", tags=["Front compat"])
-REPORTS_FILE = settings.DATA_DIR / "front_reports.json"
 _lock = threading.Lock()
+
+
+def _database_errors_as_503(endpoint):
+    @wraps(endpoint)
+    def wrapped(*args, **kwargs):
+        try:
+            return endpoint(*args, **kwargs)
+        except DatabaseError as exc:
+            raise HTTPException(503, "Хранилище PostgreSQL временно недоступно.") from exc
+
+    return wrapped
+
+
+def _dsn_identity(dsn: str) -> tuple[str, str, str]:
+    if "://" in dsn:
+        parsed = urlsplit(dsn)
+        database = unquote(parsed.path.lstrip("/")) or unquote(parsed.username or "")
+        return (parsed.hostname or "localhost", str(parsed.port or 5432), database)
+    params = {}
+    try:
+        for token in shlex.split(dsn):
+            key, value = token.split("=", 1)
+            params[key.lower()] = value
+    except (ValueError, TypeError):
+        return ("dsn", "", dsn.strip())
+    database = params.get("dbname") or params.get("database") or params.get("user", "")
+    return (
+        params.get("host", "localhost"),
+        params.get("port", "5432"),
+        database,
+    )
+
+
+def _require_separate_database(env_name: str, pool=None) -> None:
+    dsn = os.getenv(env_name, "").strip()
+    if not dsn:
+        raise DatabaseUnavailable(f"{env_name} должен указывать на отдельную PostgreSQL БД")
+
+    catalog_dsn = (
+        os.getenv("DATABASE_URL", "").strip()
+        or os.getenv("DATABASE_CATALOG_URL", "").strip()
+    )
+    configured = {
+        name: os.getenv(name, "").strip()
+        for name in ("DATABASE_TASKS_URL", "DATABASE_EMPLOYEES_URL")
+        if name != env_name and os.getenv(name, "").strip()
+    }
+    credentials_dsn = os.getenv("DATABASE_CREDENTIALS_URL", "").strip()
+    if credentials_dsn:
+        configured["DATABASE_CREDENTIALS_URL"] = credentials_dsn
+    if catalog_dsn:
+        configured["DATABASE_URL"] = catalog_dsn
+    target = _dsn_identity(dsn)
+    if any(target == _dsn_identity(other) for other in configured.values()):
+        raise DatabaseUnavailable(f"{env_name} совпадает с физической PostgreSQL БД другого сервиса")
+    if pool is not None and _dsn_identity(pool.dsn) != target:
+        raise DatabaseUnavailable(f"Пул {env_name} создан с другим PostgreSQL DSN")
 
 
 def _now() -> str:
@@ -90,34 +149,27 @@ def _eq_fallback(equipment_id: str) -> dict:
 
 
 @router.get("/equipment")
+@_database_errors_as_503
 def list_equipment():
-    return [_eq(e) for e in storage_service.get_all_equipment()]
+    return [_eq(e) for e in storage_dep().get_all_equipment()]
 
 
 @router.get("/equipment/{equipment_id}")
+@_database_errors_as_503
 def get_equipment(equipment_id: str):
-    e = storage_service.get_equipment_by_id(equipment_id)
+    e = storage_dep().get_equipment_by_id(equipment_id)
     if not e:
         raise HTTPException(404, "Оборудование не найдено.")
     return _eq(e)
 
 
 def _detail(equipment_id: str) -> dict:
-    e = storage_service.get_equipment_by_id(equipment_id)
+    e = storage_dep().get_equipment_by_id(equipment_id)
     return _eq(e) if e else _eq_fallback(equipment_id)
 
 
-_HALF = False
-_DEV = "cpu"
-try:
-    import torch
-    if torch.cuda.is_available():
-        _HALF, _DEV = True, 0
-except Exception:
-    pass
 IMGSZ = 640
 _infer_lock = threading.Lock()
-_oil_model = None
 _unified_model = None
 _unified_tried = False
 _eq_cache: dict = {}
@@ -154,35 +206,19 @@ def _unified():
     return _unified_model
 
 
-def _models():
-    global _oil_model
-    if _unified() is not None:
-        return None, None, None
-    from app.services.model_loader import model_loader
-    c = model_loader.load_corrosion_model()
-    w = model_loader.load_welding_model()
-    if _oil_model is None:
-        p = settings.OIL_LOCAL_PATH
-        if p.exists():
-            from ultralytics import YOLO
-            _oil_model = YOLO(str(p))
-    return c, w, _oil_model
-
-
 def warm_up():
     try:
         import numpy as np
         img = np.zeros((480, 640, 3), np.uint8)
-        for m in (_unified(),) + _models():
-            if m is not None:
-                m.predict(img, imgsz=IMGSZ, half=_HALF, device=_DEV, verbose=False)
+        model = _unified()
+        if model is not None:
+            model.predict(img, imgsz=IMGSZ, device="cpu", verbose=False)
     except Exception as exc:
         print(f"[front_compat] warm_up: {exc}")
 
 
-def _run(model, img, conf, kind, skip, node_id):
-    onnx = model is _unified_model
-    r = model.predict(img, conf=conf, imgsz=IMGSZ, half=False if onnx else _HALF, device="cpu" if onnx else _DEV, verbose=False, max_det=15)[0]
+def _run(model, img, conf, node_id):
+    r = model.predict(img, conf=conf, imgsz=IMGSZ, device="cpu", verbose=False, max_det=15)[0]
     if r.boxes is None or len(r.boxes) == 0:
         return []
     bx = r.boxes.xyxyn.cpu().numpy()
@@ -191,9 +227,7 @@ def _run(model, img, conf, kind, skip, node_id):
     polys = r.masks.xyn if r.masks is not None else None
     out = []
     for i in range(len(bx)):
-        if r.names[int(cl[i])] in skip:
-            continue
-        kind_i = kind or _kind_of(r.names[int(cl[i])])
+        kind_i = _kind_of(r.names[int(cl[i])])
         if kind_i is None:
             continue
         title, rec, _ = _KIND[kind_i]
@@ -210,26 +244,17 @@ def _run(model, img, conf, kind, skip, node_id):
     return out
 
 
-def _model_names() -> dict:
-    if _unified_model is not None:
-        return {"all": settings.UNIFIED_LOCAL_PATH.stem}
-    return {
-        "corrosion": settings.CORROSION_LOCAL_PATH.stem,
-        "crack": settings.WELDING_LOCAL_PATH.stem,
-        "oil": settings.OIL_LOCAL_PATH.stem,
-    }
-
-
 def _eq_cached(equipment_id: str):
     hit = _eq_cache.get(equipment_id)
     if hit and time.time() - hit[0] < 20:
         return hit[1]
-    e = storage_service.get_equipment_by_id(equipment_id)
+    e = storage_dep().get_equipment_by_id(equipment_id)
     _eq_cache[equipment_id] = (time.time(), e)
     return e
 
 
 @router.post("/inspect")
+@_database_errors_as_503
 def inspect(file: UploadFile = File(...), equipment_id: str = Form(...)):
     import cv2
     import numpy as np
@@ -243,18 +268,11 @@ def inspect(file: UploadFile = File(...), equipment_id: str = Form(...)):
         img = cv2.resize(img, (int(w * k), int(h * k)), interpolation=cv2.INTER_AREA)
     eq = _eq_cached(equipment_id)
     node_id = eq.components[0].id if eq and eq.components else None
-    corr, weld, oil = _models()
     out = []
     uni = _unified()
     with _infer_lock:
         if uni is not None:
-            out += _run(uni, img, 0.35, None, set(), node_id)
-        if corr is not None:
-            out += _run(corr, img, 0.35, "corrosion", {"car"}, node_id)
-        if weld is not None:
-            out += _run(weld, img, 0.35, "crack", {"Good Weld"}, node_id)
-        if oil is not None:
-            out += _run(oil, img, 0.30, "oil", set(), node_id)
+            out += _run(uni, img, 0.35, node_id)
     mx = lambda k: max([d["confidence"] for d in out if d["source_model"] == k], default=0.0)
     crit = max((d["severity"] for d in out), key=lambda v: _SEV_RANK[v], default="low")
     kinds = []
@@ -271,89 +289,228 @@ def inspect(file: UploadFile = File(...), equipment_id: str = Form(...)):
         "llm": {"criticality": crit, "probable_cause": cause, "recommendation_steps": steps},
         "summary": f"Найдено дефектов: {len(out)}. {cause}" if out else "Дефектов не обнаружено.",
         "meta": {"vision_mode": "real", "llm_mode": "mock",
-                 "models": _model_names(),
+                 "models": {"all": settings.UNIFIED_LOCAL_PATH.stem},
                  "processing_ms": int((time.time() - t0) * 1000), "analyzed_at": _now()},
     }
 
 
-@router.post("/inspect/detailed")
-def inspect_detailed(file: UploadFile = File(...), inspection: str = Form(...), condition_parameters: str = Form("{}")):
-    t0 = datetime.now()
-    try:
-        insp = json.loads(inspection)
-    except Exception:
-        raise HTTPException(400, "Некорректный inspection.")
-    findings = [
-        {"title": d.get("label", "Дефект"), "description": f"Уверенность {round(d.get('confidence', 0) * 100)}%, модель {d.get('source_model')}.",
-         "severity": d.get("severity", "low"), "recommendation": d.get("recommendation", "")}
-        for d in insp.get("defects", [])
-    ]
-    llm = insp.get("llm", {})
-    summary = insp.get("summary", "")
-    causes = [llm.get("probable_cause", "")] if llm.get("probable_cause") else []
-    steps = llm.get("recommendation_steps", [])
-    llm_name = None
-    if insp.get("defects"):
-        eq = insp.get("equipment") or {}
-        payload = json.dumps({
-            "equipment_name": eq.get("name") or eq.get("id") or "агрегат",
-            "defects_found": [
-                {"label": d.get("label"), "source": d.get("source_model"), "confidence": d.get("confidence"), "severity": d.get("severity")}
-                for d in insp["defects"]
-            ],
-            "defects_count": len(insp["defects"]),
-        }, ensure_ascii=False)
-        res = llm_expert_service._ollama_chat(f"ВХОДНЫЕ ДАННЫЕ:\n{payload}")
-        if res:
-            cause = res.get("probable_cause")
-            recs = res.get("recommendations") or []
-            if isinstance(recs, str):
-                recs = [recs]
-            if cause or recs:
-                causes = [str(cause)] if cause else causes
-                steps = [str(r) for r in recs] or steps
-                llm_name = settings.OLLAMA_MODEL
-                crit = str(res.get("criticality", "")).lower()
-                if crit in _SEV_RANK:
-                    insp.setdefault("llm", {})["criticality"] = crit
-    return {
-        "analysis_id": f"an-{uuid.uuid4().hex[:10]}", "inspection_id": insp.get("inspection_id", ""),
-        "summary": summary, "findings": findings,
-        "probable_causes": causes,
-        "recommendation_steps": steps,
-        "criticality": insp.get("llm", {}).get("criticality"),
-        "models": list(_model_names().values()) + ([llm_name] if llm_name else []),
-        "processing_ms": int((datetime.now() - t0).total_seconds() * 1000), "analyzed_at": _now(),
-    }
-
-
 def _load() -> list:
-    if REPORTS_FILE.exists():
-        return json.loads(REPORTS_FILE.read_text(encoding="utf-8"))
-    return []
+    # Хранилище задач переведено на PostgreSQL (promscan.reports).
+    rows = _tasks_repo.list_reports()
+    return [_task_to_front(r) for r in rows]
 
 
 def _save(items: list) -> None:
-    REPORTS_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+    raise RuntimeError("Сохранение в файл front_reports.json удалено: задачи хранятся в PostgreSQL")
+
+
+def _task_to_front(row: dict) -> dict:
+    return {
+        "id": str(row["id"]),
+        "equipment_id": row["equipment_id"],
+        "inspection_id": row["inspection_id"],
+        "status": row["status"],
+        "comment": row.get("comment") or "",
+        "photo_url": row.get("photo_url"),
+        "result": row.get("result") or {},
+        "assignee": (
+            {"id": str(row["assignee_id"]), "full_name": row.get("assignee_full_name") or ""}
+            if row.get("assignee_id")
+            else None
+        ),
+        "started_at": _pg_iso(row.get("started_at")),
+        "completed_at": _pg_iso(row.get("completed_at")),
+        "repair_comment": row.get("repair_comment"),
+        "created_at": _pg_iso(row.get("created_at")),
+        "updated_at": _pg_iso(row.get("updated_at")),
+    }
+
+
+def _pg_iso(value):
+    if value is None:
+        return None
+    text = value.isoformat() if hasattr(value, "isoformat") else str(value)
+    if text.endswith("+00:00"):
+        text = text[:-6] + "Z"
+    return text
+
+
+class _FrontTasksRepo:
+    """Тонкая обёртка над promscan.reports для маршрутов /front/api/reports."""
+
+    _FIELDS = """
+        id, equipment_id, inspection_id, status, comment, photo_url, result,
+        assignee_id, assignee_full_name, started_at, completed_at,
+        repair_comment, created_at, updated_at
+    """
+
+    def __init__(self):
+        from app.services.db import pools
+
+        self._pools = pools
+
+    def _cursor(self):
+        _require_separate_database("DATABASE_TASKS_URL")
+        pool = self._pools.get("tasks")
+        _require_separate_database("DATABASE_TASKS_URL", pool)
+        return pool.cursor()
+
+    @staticmethod
+    def _employee_full_name(employee_id: str) -> Optional[str]:
+        _require_separate_database("DATABASE_EMPLOYEES_URL")
+        service = storage_dep()
+        _require_separate_database("DATABASE_EMPLOYEES_URL", service.employees_pool)
+        return service.get_employee_full_name(employee_id)
+
+    def list_reports(self, status: Optional[str] = None) -> list:
+        with self._cursor() as cur:
+            if status:
+                cur.execute(
+                    f"SELECT {self._FIELDS} FROM promscan.reports WHERE status = %s ORDER BY created_at DESC",
+                    (status,),
+                )
+            else:
+                cur.execute(
+                    f"SELECT {self._FIELDS} FROM promscan.reports ORDER BY created_at DESC"
+                )
+            return [dict(r) for r in cur.fetchall()]
+
+    def get(self, report_id: str) -> Optional[dict]:
+        try:
+            uuid.UUID(report_id)
+        except (ValueError, TypeError, AttributeError):
+            return None
+        with self._cursor() as cur:
+            cur.execute(
+                f"SELECT {self._FIELDS} FROM promscan.reports WHERE id = %s",
+                (report_id,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def create(
+        self,
+        equipment_id: str,
+        inspection_id: str,
+        status: str,
+        comment: str,
+        result: dict,
+        photo_url: Optional[str],
+        assignee_id: Optional[str],
+    ) -> dict:
+        assignee_full_name = None
+        if assignee_id:
+            assignee_full_name = self._employee_full_name(assignee_id) or assignee_id
+        with self._cursor(commit=True) as cur:
+            cur.execute(
+                """
+                INSERT INTO promscan.reports (
+                    equipment_id, inspection_id, status, comment, photo_url,
+                    result, assignee_id, assignee_full_name
+                ) VALUES (%s, %s, 'open', %s, %s, %s, %s, %s)
+                RETURNING id, equipment_id, inspection_id, status, comment,
+                          photo_url, result, assignee_id, assignee_full_name,
+                          started_at, completed_at, repair_comment,
+                          created_at, updated_at
+                """,
+                (
+                    equipment_id,
+                    inspection_id,
+                    comment,
+                    photo_url,
+                    json.dumps(result),
+                    assignee_id,
+                    assignee_full_name,
+                ),
+            )
+            row = dict(cur.fetchone())
+            if status in ("in_progress", "closed"):
+                chain = ["in_progress"] + (["closed"] if status == "closed" else [])
+                for nxt in chain:
+                    cur.execute(
+                        """
+                        UPDATE promscan.reports SET status = %s WHERE id = %s
+                        RETURNING id, equipment_id, inspection_id, status, comment,
+                                  photo_url, result, assignee_id, assignee_full_name,
+                                  started_at, completed_at, repair_comment,
+                                  created_at, updated_at
+                        """,
+                        (nxt, row["id"]),
+                    )
+                    row = dict(cur.fetchone())
+        return row
+
+    def patch_status(self, report_id: str, new_status: str, comment: Optional[str]) -> tuple[Optional[dict], Optional[str]]:
+        """Возвращает (row, error): error — not_found|invalid|invalid_status|unassigned."""
+        try:
+            uuid.UUID(report_id)
+        except (ValueError, TypeError, AttributeError):
+            return None, "not_found"
+        try:
+            with self._cursor(commit=True) as cur:
+                cur.execute(
+                    f"SELECT {self._FIELDS} FROM promscan.reports WHERE id = %s",
+                    (report_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return None, "not_found"
+                row = dict(row)
+                if new_status == row["status"]:
+                    return row, None
+                if new_status not in ("in_progress", "closed"):
+                    return None, "invalid_status"
+                if new_status == "in_progress" and row["status"] != "open":
+                    return None, "invalid"
+                if new_status == "closed" and row["status"] != "in_progress":
+                    return None, "invalid"
+                if not row.get("assignee_id"):
+                    return None, "unassigned"
+                cur.execute(
+                    """
+                    UPDATE promscan.reports
+                    SET status = %s,
+                        repair_comment = COALESCE(%s, repair_comment)
+                    WHERE id = %s
+                    RETURNING id, equipment_id, inspection_id, status, comment,
+                              photo_url, result, assignee_id, assignee_full_name,
+                              started_at, completed_at, repair_comment,
+                              created_at, updated_at
+                    """,
+                    (new_status, comment, report_id),
+                )
+                updated = cur.fetchone()
+            if updated is None:
+                return None, "invalid"
+            return dict(updated), None
+        except DatabaseError as exc:
+            if getattr(exc.__cause__, "sqlstate", None) == "23514":
+                return None, "invalid"
+            raise
+
+
+_tasks_repo = _FrontTasksRepo()
 
 
 @router.get("/reports")
+@_database_errors_as_503
 def list_reports(status: Optional[str] = None):
-    with _lock:
-        items = _load()
-    return [r for r in items if not status or r["status"] == status]
+    if status is not None and status not in ("open", "in_progress", "closed", "rejected"):
+        raise HTTPException(422, "Неверный статус.")
+    return [_task_to_front(r) for r in _tasks_repo.list_reports(status)]
 
 
 @router.get("/reports/{report_id}")
+@_database_errors_as_503
 def get_report(report_id: str):
-    with _lock:
-        for r in _load():
-            if r["id"] == report_id:
-                return r
-    raise HTTPException(404, "Отчёт не найден.")
+    row = _tasks_repo.get(report_id)
+    if row is None:
+        raise HTTPException(404, "Отчёт не найден.")
+    return _task_to_front(row)
 
 
 @router.post("/reports")
+@_database_errors_as_503
 def create_report(
     request: Request,
     equipment_id: str = Form(...), inspection_id: str = Form(...), status: str = Form("open"),
@@ -368,23 +525,36 @@ def create_report(
         with open(settings.UPLOAD_DIR / name, "wb") as fh:
             shutil.copyfileobj(photo.file, fh)
         photo_url = f"/static/uploads/{name}"
-    now = _now()
-    rep = {
-        "id": f"report-{uuid.uuid4().hex[:10]}", "equipment_id": equipment_id, "inspection_id": inspection_id,
-        "status": status, "comment": comment, "photo_url": photo_url, "result": json.loads(payload),
-        "assignee": {"id": assignee_id, "full_name": assignee_id} if assignee_id else None,
-        "started_at": None if status == "open" else now, "completed_at": now if status == "closed" else None,
-        "repair_comment": None, "created_at": now, "updated_at": now,
-    }
     try:
-        storage_service.increment_inspection_count(equipment_id)
+        result_payload = json.loads(payload)
+    except Exception:
+        raise HTTPException(422, "Некорректный payload.")
+    if not isinstance(result_payload, dict):
+        raise HTTPException(422, "payload должен быть JSON-объектом.")
+    if not equipment_id.strip() or not inspection_id.strip():
+        raise HTTPException(422, "equipment_id и inspection_id обязательны.")
+    assignee_id = assignee_id or None
+    if status != "open" and not assignee_id:
+        raise HTTPException(409, "Сначала назначьте задачу сотруднику.")
+    if assignee_id:
+        try:
+            uuid.UUID(assignee_id)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(422, "assignee_id должен быть UUID.")
+    row = _tasks_repo.create(
+        equipment_id=equipment_id,
+        inspection_id=inspection_id,
+        status=status,
+        comment=comment,
+        result=result_payload,
+        photo_url=photo_url,
+        assignee_id=assignee_id,
+    )
+    try:
+        storage_dep().increment_inspection_count(equipment_id)
     except Exception:
         pass
-    with _lock:
-        items = _load()
-        items.insert(0, rep)
-        _save(items)
-    return rep
+    return _task_to_front(row)
 
 
 class StatusIn(BaseModel):
@@ -393,31 +563,28 @@ class StatusIn(BaseModel):
 
 
 @router.patch("/reports/{report_id}/status")
+@_database_errors_as_503
 def patch_status(report_id: str, body: StatusIn):
-    with _lock:
-        items = _load()
-        rep = next((r for r in items if r["id"] == report_id), None)
-        if rep is None:
-            raise HTTPException(404, "Отчёт не найден.")
-        if body.status == rep["status"]:
-            return rep
-        if body.status == "in_progress" and rep["status"] != "open":
-            raise HTTPException(409, "Начать можно только назначенную задачу.")
-        if body.status == "closed" and rep["status"] != "in_progress":
-            raise HTTPException(409, "Завершить можно только задачу в работе.")
-        if body.status not in ("in_progress", "closed"):
-            raise HTTPException(422, "Неверный статус.")
-        if not rep["assignee"]:
-            raise HTTPException(409, "Сначала назначьте задачу сотруднику.")
-        now = _now()
-        rep["status"], rep["updated_at"] = body.status, now
-        rep["started_at"] = rep["started_at"] or now
-        if body.status == "closed":
-            rep["completed_at"] = now
-        if body.comment is not None:
-            rep["repair_comment"] = body.comment
-        _save(items)
-        return rep
+    row, error = _tasks_repo.patch_status(report_id, body.status, body.comment)
+    if error == "not_found":
+        raise HTTPException(404, "Отчёт не найден.")
+    if error == "invalid":
+        raise HTTPException(409, "Недопустимый переход статуса.")
+    if error == "invalid_status":
+        raise HTTPException(422, "Неверный статус.")
+    if error == "unassigned":
+        raise HTTPException(409, "Сначала назначьте задачу сотруднику.")
+    repeated_rejected = (
+        body.status == "rejected"
+        and row is not None
+        and row.get("status") == "rejected"
+    )
+    if body.status not in ("in_progress", "closed", "open") and not repeated_rejected:
+        # body.status open не меняет состояние, но контракт PATCH допускает
+        # только in_progress/closed; open возвращаем как текущее состояние.
+        # Уже отклонённый report можно безопасно повторно подтвердить.
+        raise HTTPException(422, "Неверный статус.")
+    return _task_to_front(row)
 
 _EMAIL_RE = r"^[^@\s<>,;\"']{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,}$"
 

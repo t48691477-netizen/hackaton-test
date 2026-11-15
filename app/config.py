@@ -26,28 +26,22 @@ class Settings(BaseModel):
     VERSION: str = "1.0.0"
     DESCRIPTION: str = (
         "Интеллектуальная система предиктивной аналитики и детекции дефектов оборудования (ТОиР). "
-        "Включает сегментацию очагов коррозии (YOLOv11-seg), детекцию дефектов сварных швов (YOLOv8-det) "
+        "Включает детекцию дефектов единой YOLO-моделью (weights/defects_yolo.onnx) "
         "и генерацию экспертных заключений главного инженера ТОиР на базе LLM."
     )
     
     # Weights configuration
     WEIGHTS_DIR: Path = BASE_DIR / "weights"
-    CORROSION_MODEL_REPO: str = "Decizez/yolov-corrosion-detection"
-    CORROSION_MODEL_FILENAME: str = "Basic_YOLO11_v1.pt"
-    CORROSION_LOCAL_PATH: Path = _first_existing(
-        os.getenv("CORROSION_WEIGHTS"), "corrosion_yolo26.pt", "corrosion_yolov11_seg.pt"
-    )
-
-    WELDING_MODEL_REPO: str = "avinashhm/welding-defect-yolov8-full-training"
-    WELDING_MODEL_FILENAME: str = "best.pt"
-    WELDING_LOCAL_PATH: Path = _first_existing(os.getenv("WELDING_WEIGHTS"), "welding_yolov8_det.pt")
     UNIFIED_LOCAL_PATH: Path = _first_existing(os.getenv("UNIFIED_WEIGHTS"), "defects_yolo.onnx")
-    OIL_LOCAL_PATH: Path = _first_existing(os.getenv("OIL_WEIGHTS"), "oil_yolo26.pt", "oil_leaks.pt")
     
     # Storage and uploads
     UPLOAD_DIR: Path = BASE_DIR / "static" / "uploads"
     DATA_DIR: Path = BASE_DIR / "data"
-    DB_PATH: Path = BASE_DIR / "data" / "toir.db"
+    # PostgreSQL DSN описаны в database/README.md; SQLite больше не используется.
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    DATABASE_TASKS_URL: str = os.getenv("DATABASE_TASKS_URL", "") or os.getenv("DATABASE_URL", "")
+    DATABASE_EMPLOYEES_URL: str = os.getenv("DATABASE_EMPLOYEES_URL", "") or os.getenv("DATABASE_URL", "")
+    DATABASE_CREDENTIALS_URL: str = os.getenv("DATABASE_CREDENTIALS_URL", "") or os.getenv("DATABASE_URL", "")
     
     # LLM Settings
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
@@ -58,8 +52,7 @@ class Settings(BaseModel):
     OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT", "90"))
     
     # Inference settings
-    CONF_THRESHOLD_CORROSION: float = 0.25
-    CONF_THRESHOLD_WELDING: float = 0.25
+    CONF_THRESHOLD: float = 0.25
 
 settings = Settings()
 settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

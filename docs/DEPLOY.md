@@ -1,68 +1,217 @@
 # TOiR API deployment
 
-This stack runs the FastAPI TOiR API (`app.main`) behind Caddy. It supplies HTTPS termination and deployment isolation; application access control, request limits, and upload validation remain application responsibilities and must be configured and tested as described below. The React client contract and Android mock service are separate APIs; this stack does not adapt either one.
+The FastAPI service in `app.main` now uses PostgreSQL for its equipment catalog,
+reports/tasks, employee directory, and credentials/sessions. Set up the database
+and schemas before exposing the service. The SQL files are setup artifacts; this
+document does not claim that they have been applied to a production database.
 
 ## Prerequisites
 
-- A Linux host with Docker Engine and Compose v2; use a recent Compose release for GPU device reservations.
-- A DNS name such as `api.example.com` whose A/AAAA records point directly to this host. Remove an AAAA record if IPv6 is not routed to the host.
-- Inbound TCP 80 and 443 open in the host firewall and cloud firewall/security group. No other inbound port is needed. Keep outbound internet access for image builds, first-time model downloads from Hugging Face, and optional Gemini requests.
-- For CUDA, an NVIDIA GPU, supported host driver, and NVIDIA Container Toolkit. The CPU profile is the default and needs no GPU.
+- Python 3.11 or newer and PostgreSQL 15 or newer, reachable from the API host.
+- A DNS name and a TLS-terminating reverse proxy for public deployments.
+- `weights/defects_yolo.onnx` for defect detection. The service uses this one
+  ONNX model on CPU; it does not use separate corrosion/oil/welding weight files.
+- `psql` and `createdb` for database setup. The PostgreSQL driver is not listed
+  in the current `requirements.txt`; install it explicitly with
+  `python -m pip install "psycopg[binary,pool]"`.
 
-## Configure and start
+## Create databases and apply schemas
 
-From the repository root:
+The recommended isolated layout uses four physical PostgreSQL databases. Each
+uses the `promscan` schema, but PostgreSQL foreign keys and transactions do not
+cross database boundaries.
 
-```sh
-cp .env.production.example .env
+```powershell
+createuser --pwprompt promscan_catalog
+createuser --pwprompt promscan_tasks
+createuser --pwprompt promscan_employees
+createuser --pwprompt promscan_credentials
+
+createdb promscan
+createdb promscan_tasks
+createdb promscan_employees
+createdb promscan_credentials
+
+psql -d promscan -c "GRANT CONNECT ON DATABASE promscan TO promscan_catalog;"
+psql -d promscan_tasks -c "GRANT CONNECT ON DATABASE promscan_tasks TO promscan_tasks;"
+psql -d promscan_employees -c "GRANT CONNECT ON DATABASE promscan_employees TO promscan_employees;"
+psql -d promscan_credentials -c "GRANT CONNECT ON DATABASE promscan_credentials TO promscan_credentials;"
+
+psql -v ON_ERROR_STOP=1 -d promscan -f database/sql/001_schema.sql
+psql -v ON_ERROR_STOP=1 -d promscan -f database/migrations/005_webapp_catalog.sql
+psql -v ON_ERROR_STOP=1 -d promscan_tasks -f database/sql/tasks/001_schema.sql
+psql -v ON_ERROR_STOP=1 -d promscan_tasks -f database/sql/tasks/002_rejected_status.sql
+psql -v ON_ERROR_STOP=1 -d promscan_employees -f database/sql/employees/001_schema.sql
+psql -v ON_ERROR_STOP=1 -d promscan_employees -f database/sql/employees/002_invitation_states.sql
+psql -v ON_ERROR_STOP=1 -d promscan_credentials -f database/sql/credentials/001_schema.sql
+psql -v ON_ERROR_STOP=1 -d promscan_credentials -f database/sql/credentials/002_key_salt_and_login_audit.sql
+psql -v ON_ERROR_STOP=1 -d promscan_credentials -f database/sql/credentials/003_enforce_key_salt.sql
+
+psql -d promscan -c "GRANT USAGE ON SCHEMA promscan TO promscan_catalog;"
+psql -d promscan -c "GRANT SELECT ON promscan.equipment, promscan.equipment_nodes TO promscan_catalog;"
+psql -d promscan -c "GRANT SELECT, INSERT, UPDATE ON promscan.webapp_equipment TO promscan_catalog;"
+psql -d promscan_tasks -c "GRANT USAGE ON SCHEMA promscan TO promscan_tasks;"
+psql -d promscan_tasks -c "GRANT SELECT, INSERT, UPDATE ON promscan.reports TO promscan_tasks;"
+psql -d promscan_employees -c "GRANT USAGE ON SCHEMA promscan TO promscan_employees;"
+psql -d promscan_employees -c "GRANT SELECT, INSERT, UPDATE, DELETE ON promscan.employees TO promscan_employees;"
+psql -d promscan_credentials -c "GRANT USAGE ON SCHEMA promscan TO promscan_credentials;"
+psql -d promscan_credentials -c "GRANT SELECT, INSERT, UPDATE, DELETE ON promscan.access_key_credentials TO promscan_credentials;"
+psql -d promscan_credentials -c "GRANT SELECT, INSERT, UPDATE ON promscan.auth_sessions TO promscan_credentials;"
+psql -d promscan_credentials -c "GRANT SELECT, INSERT, UPDATE, DELETE ON promscan.auth_login_attempts TO promscan_credentials;"
+psql -d promscan_credentials -c "GRANT USAGE, SELECT ON SEQUENCE promscan.auth_login_attempts_id_seq TO promscan_credentials;"
 ```
 
-Edit `.env`; set `DOMAIN` to the DNS name, keep `COMPOSE_PROFILES=cpu`, generate an Argon2id hash for a real 10-character access key, and set `TOIR_ACCESS_KEY_HASH`, `TOIR_ACCOUNT_ID`, `TOIR_FULL_NAME`, `TOIR_EMAIL`, and `TOIR_ROLE`. Keep `TOIR_DISABLE_DOCS=true` for production. Leave `TOIR_CORS_ORIGINS` empty for same-origin browser use and native Android; if a separate browser console is approved, set it to exact HTTPS origins separated by commas. Tune the detect concurrency/rate-limit variables only after load testing. Add `GEMINI_API_KEY` only if the Gemini integration is intended. Restrict `.env` to the deployment operator. Never put secrets in the image, build arguments, source control, or Android app. An empty Gemini key selects the rule-based fallback; it does not disable the API.
+Run role, database, and schema creation as an administrator allowed to create
+roles, databases, and the `pgcrypto` extension. The `promscan_*` roles are
+runtime roles; apply schema changes as the migration administrator, then apply
+the runtime grants shown above. These commands assume new, empty databases. For
+an existing credentials database, do not run
+`003_enforce_key_salt.sql` until every credential has a salt; the migration
+intentionally fails if any `key_salt` is `NULL`. Use an approved backfill or
+reissue process first. Review and back up existing databases before applying
+any SQL. Do not edit an already-applied SQL file to change its behavior; add a
+new migration instead.
 
-Generate the access-key hash before starting the stack:
+The catalog schema migration creates an empty `promscan.webapp_equipment`
+projection used by the current `/api` and `/front/api` handlers. It does not
+populate the application catalog; load only an approved equipment registry.
+The tasks schema uses `open`, `in_progress`, and `closed`; the additive
+`002_rejected_status.sql` migration adds the distinct `rejected` state used by
+the legacy `/api/reports` contract. Employee UUIDs are stored in a separate
+database and are copied as an assignee snapshot into task rows; there is no
+cross-database foreign key.
 
-```sh
-python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('REPLACE_WITH_A_10_CHARACTER_KEY'))"
+## Configure the application
+
+Set server-side environment variables. The examples use local databases; use
+the deployment secret manager for real credentials and URL-encode reserved
+characters in DSN passwords.
+
+```powershell
+$env:DATABASE_URL = "postgresql://promscan_catalog:password@127.0.0.1:5432/promscan"
+$env:DATABASE_TASKS_URL = "postgresql://promscan_tasks:password@127.0.0.1:5432/promscan_tasks"
+$env:DATABASE_EMPLOYEES_URL = "postgresql://promscan_employees:password@127.0.0.1:5432/promscan_employees"
+$env:DATABASE_CREDENTIALS_URL = "postgresql://promscan_credentials:password@127.0.0.1:5432/promscan_credentials"
+$env:LOGIN_FP_SECRET = "<random secret from the deployment secret manager>"
+$env:TOIR_ACCESS_KEY_HASH = "<Argon2id PHC hash for the legacy single account, if used>"
+$env:TOIR_DISABLE_DOCS = "true"
+$env:TOIR_CORS_ORIGINS = ""
 ```
 
-The plaintext key is entered only into the Android login form or another trusted client; store only the generated hash in `.env`.
+Replace each example password with the corresponding value entered for
+`createuser`; replace the secret placeholders with actual values. The examples
+must match the database grants above. When applying future migrations, review
+whether they introduce tables, sequences, or functions the runtime role needs.
+The catalog role can read equipment identities and nodes, but is not granted
+access to separate passport-detail or measurement tables.
 
-Start and inspect:
+`DATABASE_URL` is the catalog DSN; the catalog pool can fall back to
+`DATABASE_CATALOG_URL` if it is unset. For compatibility, the current connection
+provider falls back to `DATABASE_URL` when any of the tasks, employees, or
+credentials DSNs is unset. Set all four primary DSNs when using the isolated
+layout above. There is no automatic schema migration on FastAPI startup.
 
-```sh
-docker compose config
-docker compose up --build -d
-docker compose ps
-docker compose logs -f caddy api
+The compatibility `/front/api/reports` routes additionally reject an unset
+`DATABASE_TASKS_URL` or one pointing to the catalog database. Assigning an
+employee there also requires a distinct `DATABASE_EMPLOYEES_URL`.
+
+The credentials database contains no seeded users or access keys. The service
+supports `/api/auth/login`, `/api/auth/me`, `/api/auth/logout`, and protected
+`/api/users` list, create, access-key rotation, and deactivation operations.
+Creation and rotation send keys synchronously through SMTP; configure
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD`, and
+`SMTP_FROM` in the server secret manager. Employee creation inserts the employee
+first, then its Argon2id credential, then sends mail. Credential/database or mail
+failure triggers compensating deletion of records created for that request.
+Rotation changes the credential (revoking active sessions by trigger) before
+mail delivery and restores the prior credential if delivery fails; restoration
+also invalidates sessions issued before the attempt. These operations span
+separate employees and credentials transactions, so monitor `503` responses and
+review account state before retrying. Alternatively, `TOIR_ACCESS_KEY_HASH` enables a legacy
+single-account fallback only while the credentials table has no rows; the first
+successful fallback login writes its credential record and session to
+PostgreSQL. Sessions require PostgreSQL. Never put database credentials, access
+keys, or model-provider secrets in the frontend environment or Android package.
+
+Employee deactivation updates the employee row and deletes its credential in two
+independent PostgreSQL transactions because the databases are separate. The
+employee update is committed first. If credential deletion is unavailable, the
+employee remains inactive and the API returns `503`; retrying the operation is
+safe and repeats credential revocation.
+
+Install application dependencies and start the API from the repository root:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m pip install "psycopg[binary,pool]"
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Caddy obtains and renews a public certificate using ACME. The persistent `caddy_data` volume holds certificates and private key material; back it up as a secret. Caddy redirects HTTP to HTTPS, terminates public TLS, sets HSTS on HTTPS responses, and returns 404 for `/docs`, `/redoc`, and `/openapi.json` (including subpaths). The API container has no published host port; only Caddy publishes TCP 80/443.
+Keep the API bound to a private interface behind a trusted TLS proxy for public
+use. Configure exact `TOIR_CORS_ORIGINS` only for approved browser origins;
+same-origin browser clients and native Android do not need browser CORS.
+`/front/api/*` does not check Bearer authorization, so TLS alone does not make
+those routes private. Do not expose them publicly without an additional access
+control boundary. Uploaded files under `/static/uploads/` are also served
+without authentication; do not store confidential images there without
+authenticated media delivery.
 
-For CUDA instead, set `COMPOSE_PROFILES=cuda` and `API_UPSTREAM=api-cuda:8000` in `.env`, then run `docker compose up --build -d`. Do not enable both profiles: both services share the persistent volumes and are not intended to run concurrently. This builds PyTorch from the CUDA 12.8 wheel index; the host's NVIDIA driver/toolkit must support it. Switch back by setting `COMPOSE_PROFILES=cpu` and `API_UPSTREAM=api:8000`.
+The checked-in Caddyfile redirects HTTP to HTTPS, obtains certificates through
+ACME for a public DNS name, hides `/docs`, `/redoc`, and `/openapi.json`, sets
+HSTS, and limits request bodies to 20 MB. Public use requires DNS to resolve to
+the proxy host and inbound TCP ports 80 and 443 to be permitted by its firewalls.
+In Compose, only Caddy publishes ports
+80/443; the API is on a private Docker network. Caddy overwrites `X-Real-IP`
+from its immediate connection peer, so do not put another proxy in front
+without restricting origin access and configuring a trusted client-IP chain.
+Protect the `caddy_data` and `caddy_config` volumes and monitor certificate
+renewal and disk space.
 
-Check HTTPS readiness with `curl -fsS https://api.example.com/health`. The Compose health check calls the existing `/health` route from inside the API container. That route proves HTTP/process reachability only: it can return healthy while either model is not loaded. Models are loaded lazily on the first inspection, weights may be downloaded then, and health is not a model-readiness or inference check. First requests can be slow or fail if the host cannot reach Hugging Face.
+The app's default ingress limit is 120 requests per minute, with a separate
+`/api/detect` limit of 30 per minute; both are in-process and should not be
+treated as shared limits across workers. Keep one worker unless limits are moved
+to shared infrastructure. `/api/detect` caps bodies at 5 MiB and dimensions at
+4096 px. `/api/inspect` checks the filename extension but does not validate
+image signatures or enforce an equivalent application-level size limit, so
+retain an edge body limit and add stricter validation before broad exposure.
+`/health` proves process reachability and reports whether the single model was
+loaded; it does not verify database schemas or complete an inference request.
 
-## Persistent data and operations
+## Deployment configuration gap
 
-Named volumes persist SQLite data (`api_data` at `/app/data`), uploaded and annotated images (`uploaded_images` at `/app/static/uploads`), and model files (`model_weights` at `/app/weights`) across container replacement. The image copies only backend code and `static/index.html`; local weights, runtime data, and secrets are excluded from the build context. The API runs as UID 10001 with a read-only root filesystem and writable data volumes. Back up the SQLite database consistently while the API is stopped, and back up uploads/weights according to retention needs. Test restores; Docker volumes are not a backup policy.
+The checked-in Compose stack uses profiles (`cpu` or `cuda`) and requires a
+`DOMAIN` and `TOIR_ACCESS_KEY_HASH` in its environment. It currently passes no
+PostgreSQL DSNs or `LOGIN_FP_SECRET`, does not install a PostgreSQL driver
+through `requirements.txt`/`Dockerfile`, and retains a local `api_data` volume
+from the previous deployment. Therefore it is not yet a configured deployment
+of the PostgreSQL-backed service. The API health check can succeed while
+database-backed endpoints and login fail. Do not treat `docker compose up` or
+the HTTP health check as proof of database persistence. A Compose deployment
+needs a reviewed change to pass secrets, install the driver, grant network
+access to PostgreSQL, and mount/configure the ONNX weights before it can use
+this storage configuration.
 
-Useful commands:
+For a configured service, the repository's Caddy example can terminate HTTPS
+and proxy to the private API. Keep the API port unpublished, protect proxy
+certificate data, restrict host access, and back up each PostgreSQL database
+and uploaded files according to an explicit retention policy. Test restores.
+The current service does not provide an automatic database backup or migration
+command. `docker compose down` does not remove named volumes; avoid `docker
+compose down -v` unless intentionally deleting those volumes. The old `api_data`
+volume is not a PostgreSQL backup.
 
-```sh
-docker compose logs -f api
-docker compose exec api python -c "from urllib.request import urlopen; print(urlopen('http://127.0.0.1:8000/health').read().decode())"
-docker compose down
-```
+## API and model notes
 
-`docker compose down` preserves named volumes. Do not use `docker compose down -v` unless intentionally deleting the database, uploads, models, and Caddy certificates. Do not publish or bind-mount port 8000 to the host. Restrict Docker socket and host access to trusted operators.
+The established `/api` contract and the compatibility `/front/api` contract
+remain separate; see [API_CONTRACT.md](API_CONTRACT.md) for their routes and
+status mappings. The Android client uses the fast
+`POST /front/api/inspect`; the React panel remains demo-only. There is no
+`/front/api/inspect/detailed` route and no Android detailed-analysis endpoint.
+Detection uses the single
+`weights/defects_yolo.onnx` model. LLM credentials and provider availability are
+independent of database readiness.
 
-## Required production controls
-
-- **Access control:** the FastAPI routes require a bearer session issued by `/api/auth/login`. The configured account receives permissions from `TOIR_ROLE`: `engineer` may scan and create reports, `dispatcher` may also read/update the report queue, and `admin`/`director` may manage equipment. `/health`, the UI, and static files remain public for readiness and same-origin delivery; `/static/uploads/` is public by design in this prototype, so do not put confidential images there without adding authenticated media delivery.
-- **Rate limiting:** `/api/auth/login` allows five credential checks, then applies a per-client lockout after the fifth failure. The FastAPI app applies a configurable in-process ingress limit (`TOIR_INGRESS_RATE_LIMIT`, `TOIR_INGRESS_RATE_WINDOW_SECONDS`) and a separate per-client/per-account `/api/detect` sliding-window limit (`TOIR_DETECT_RATE_LIMIT`, `TOIR_DETECT_RATE_WINDOW_SECONDS`), with non-waiting inference concurrency (`TOIR_DETECT_CONCURRENCY`). Current defaults (120 ingress requests and 30 detect requests per minute) can throttle a fast live stream; measure the target server and tune both limits to the needed frame cadence before deployment. The Android client can submit up to about 22 frames per second when responses are fast, but that is a client-side ceiling, not a measured server rate. Caddy overwrites `X-Real-IP` from its connection peer before forwarding; do not put another proxy in front without restricting origin access and configuring a trusted client-IP chain. Limits are local to one API worker; keep one worker or add a shared gateway/store before scaling horizontally. Caddy also caps request bodies at 20 MiB and should be paired with gateway connection/time limits, especially for `/api/inspect`.
-- **Uploads:** `/api/detect` validates `image/jpeg`, caps the body at 5 MiB, and caps dimensions at 4096 pixels. `/api/inspect` still checks the filename extension and writes the upload to disk; it needs an edge request-body cap, upstream timeout/concurrency limits, and a future byte/signature/dimension validator before broad public exposure.
-- **CORS:** the application allows no cross-origin requests unless `TOIR_CORS_ORIGINS` is set to an exact comma-separated origin list. Same-origin use of the API and static panel on `https://api.example.com` needs no browser CORS allowance. Native Android traffic is not governed by browser CORS. Never use wildcard origins for a credentialed production API.
-- **TLS trust boundary:** this stack assumes Caddy receives public HTTP/HTTPS directly and is the trusted TLS terminator. Do not expose the API container or trust client-supplied forwarding headers. If placing a load balancer/CDN in front, restrict its origin access, configure its TLS and forwarded-header trust explicitly, and test redirects/client IP handling; do not assume the app currently has trusted-proxy configuration.
-- Keep DNS and the firewall aligned with the certificate hostname, use a real public hostname (not an IP), protect Caddy's certificate volume, and monitor certificate/renewal and disk capacity. HSTS is set for one year without `includeSubDomains` or preload; only enable broader HSTS after every affected hostname is HTTPS-ready.
-
-The API has no configured migration or model pre-download/readiness command. Allow first-start/first-inference time, verify both models and a representative inspection manually, and monitor disk use. `/health` reports model booleans but does not gate health on them. The LLM and model behavior, upload validation, static-media access policy, and trusted-proxy configuration remain application/deployment concerns. Certificate pinning is intentionally not enabled; decide it separately after establishing certificate rotation and recovery procedures.
+Before calling a deployment verified, exercise login, catalog reads, inspection,
+report create/list/status transitions (including rejection), and a restart on
+the intended PostgreSQL instance. No such production migration or production
+verification is asserted here.

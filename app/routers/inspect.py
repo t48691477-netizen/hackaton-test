@@ -1,14 +1,17 @@
+import logging
 import shutil
 import time
 from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
+from app.routers._deps import storage_dep
 from app.routers.auth import require_scan
 from app.config import settings
 from app.schemas.inspection import InspectResponse
-from app.services.storage import storage_service
 from app.services.detector import defect_detector
 from app.services.llm_expert import llm_expert_service
+
+logger = logging.getLogger("toir_inspect")
 
 router = APIRouter(prefix="/api/inspect", tags=["Inspection & AI (Нейросети + LLM)"])
 
@@ -16,20 +19,20 @@ router = APIRouter(prefix="/api/inspect", tags=["Inspection & AI (Нейросе
     "",
     response_model=InspectResponse,
     status_code=status.HTTP_200_OK,
-    summary="Комплексная инспекция: YOLO (детекция + сегментация) + Эксперт ТОиР (LLM)",
+    summary="Комплексная инспекция: единая YOLO-модель + Эксперт ТОиР (LLM)",
     description=(
         "Принимает фотографию узла оборудования и его ID. "
         "В едином пайплайне выполняет:\n"
-        "1. Сегментацию очагов коррозии (Decizez/yolov-corrosion-detection) с получением полигонов;\n"
-        "2. Детекцию дефектов сварных швов и трещин (avinashhm/welding-defect-yolov8-full-training) с получением боксов;\n"
-        "3. Инженерный анализ Главным экспертом ТОиР (LLM) с расчетом критичности и пошаговыми рекомендациями;\n"
-        "4. Отрисовку и сохранение аннотированного фото для веб/мобайла."
+        "1. Детекцию дефектов единой ONNX-моделью YOLO (weights/defects_yolo.onnx) с получением боксов;\n"
+        "2. Инженерный анализ Главным экспертом ТОиР (LLM) с расчетом критичности и пошаговыми рекомендациями;\n"
+        "3. Отрисовку и сохранение аннотированного фото для веб/мобайла."
     )
 )
 async def inspect_equipment(
     file: UploadFile = File(..., description="Файл изображения (.jpg, .png, .webp) для детекции дефектов"),
     equipment_id: str = Form(..., description="ID оборудования в системе ТОиР", examples=["pump_d1250_03"]),
     _account=Depends(require_scan),
+    storage=Depends(storage_dep),
 ):
     # Проверка расширения файла
     suffix = Path(file.filename or "image.jpg").suffix.lower()
@@ -40,7 +43,7 @@ async def inspect_equipment(
         )
 
     # Получаем данные об оборудовании из реестра
-    equipment = storage_service.get_equipment_by_id(equipment_id)
+    equipment = storage.get_equipment_by_id(equipment_id)
     if equipment:
         equipment_name = equipment.name
         component_age = equipment.component_age
@@ -65,13 +68,13 @@ async def inspect_equipment(
             detail=f"Не удалось сохранить загруженный файл: {e}"
         )
 
-    # 1. Запуск детекции и сегментации YOLO
+    # 1. Запуск детекции единой YOLO-моделью
     try:
         defects, annotated_path = defect_detector.detect(saved_file_path)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка инференса нейросетей YOLO: {e}"
+            detail=f"Ошибка инференса единой YOLO-модели: {e}"
         )
 
     # 2. Вызов LLM Эксперта ТОиР
@@ -82,8 +85,11 @@ async def inspect_equipment(
         defects=defects
     )
 
-    # Увеличиваем счетчик инспекций
-    storage_service.increment_inspection_count(equipment_id)
+    # Увеличиваем счетчик инспекций (второстепенный эффект — не валить акт при сбое)
+    try:
+        storage.increment_inspection_count(equipment_id)
+    except Exception as exc:
+        logger.warning("Не удалось увеличить счётчик инспекций %s: %s", equipment_id, exc)
 
     # Формируем публичные относительные URL к фото
     image_url = f"/static/uploads/{saved_filename}"

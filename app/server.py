@@ -1,8 +1,10 @@
 import os
 import json
+import shlex
 import shutil
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 
@@ -10,7 +12,8 @@ from app.config import settings
 from app.schemas.equipment import EquipmentCreate, EquipmentResponse
 from app.schemas.report import ReportCreate, ReportResponse, RepairStatus
 from app.schemas.inspection import InspectResponse
-from app.services.storage import storage_service
+from app.services.db import DatabaseError
+from app.services.storage import get_storage
 from app.services.detector import defect_detector
 from app.services.llm_expert import llm_expert_service
 
@@ -20,6 +23,74 @@ flask_app = Flask(
     static_url_path="/static"
 )
 CORS(flask_app)
+
+
+class StorageUnavailable(Exception):
+    """Хранилище PostgreSQL не инициализировано (DSN не задан)."""
+
+
+@flask_app.errorhandler(StorageUnavailable)
+def _handle_storage_unavailable(exc):
+    return jsonify({"detail": str(exc)}), 503
+
+
+@flask_app.errorhandler(DatabaseError)
+def _handle_database_unavailable(exc):
+    return jsonify({"detail": "Хранилище PostgreSQL временно недоступно."}), 503
+
+
+def _dsn_identity(dsn):
+    if "://" in dsn:
+        parsed = urlsplit(dsn)
+        database = unquote(parsed.path.lstrip("/")) or unquote(parsed.username or "")
+        return (parsed.hostname or "localhost", str(parsed.port or 5432), database)
+    params = {}
+    try:
+        for token in shlex.split(dsn):
+            key, value = token.split("=", 1)
+            params[key.lower()] = value
+    except (ValueError, TypeError):
+        return ("dsn", "", dsn.strip())
+    return (
+        params.get("host", "localhost"),
+        params.get("port", "5432"),
+        params.get("dbname") or params.get("database") or params.get("user", ""),
+    )
+
+
+def _storage(*, require_tasks=False):
+    """Разрешение хранилища на уровне запроса (лениво, с повторной попыткой)."""
+    svc = get_storage()
+    if svc is None:
+        raise StorageUnavailable(
+            "Хранилище PostgreSQL не настроено: задайте DATABASE_URL и перезапустите сервис."
+        )
+    if require_tasks:
+        tasks_dsn = os.getenv("DATABASE_TASKS_URL", "").strip()
+        if not tasks_dsn:
+            raise StorageUnavailable(
+                "Хранилище задач не настроено: задайте DATABASE_TASKS_URL."
+            )
+        other_dsns = [
+            os.getenv(name, "").strip()
+            for name in (
+                "DATABASE_URL",
+                "DATABASE_CATALOG_URL",
+                "DATABASE_EMPLOYEES_URL",
+                "DATABASE_CREDENTIALS_URL",
+            )
+        ]
+        expected = _dsn_identity(tasks_dsn)
+        if any(dsn and _dsn_identity(dsn) == expected for dsn in other_dsns):
+            raise StorageUnavailable(
+                "DATABASE_TASKS_URL должен указывать на отдельную PostgreSQL БД."
+            )
+        task_pool = getattr(svc, "tasks", None)
+        if task_pool is None or _dsn_identity(task_pool.dsn) != expected:
+            raise StorageUnavailable(
+                "Пул задач создан с другим PostgreSQL DSN; перезапустите сервис."
+            )
+    return svc
 
 # --- 1. UI и Документация ---
 
@@ -85,12 +156,12 @@ def health():
 
 @flask_app.route("/api/equipment", methods=["GET"])
 def get_equipment_list():
-    items = storage_service.get_all_equipment()
+    items = _storage().get_all_equipment()
     return jsonify([it.model_dump() for it in items])
 
 @flask_app.route("/api/equipment/<equipment_id>", methods=["GET"])
 def get_equipment_detail(equipment_id):
-    item = storage_service.get_equipment_by_id(equipment_id)
+    item = _storage().get_equipment_by_id(equipment_id)
     if not item:
         return jsonify({"detail": f"Оборудование с ID '{equipment_id}' не найдено"}), 404
     return jsonify(item.model_dump())
@@ -103,7 +174,7 @@ def create_or_update_equipment():
     except Exception as e:
         return jsonify({"detail": f"Ошибка валидации Pydantic: {e}"}), 422
 
-    saved = storage_service.save_equipment(eq_in)
+    saved = _storage().save_equipment(eq_in)
     return jsonify(saved.model_dump()), 201
 
 # --- 3. Эндпоинт Инспекции (POST /api/inspect) ---
@@ -120,7 +191,7 @@ def inspect_equipment_endpoint():
     if suffix not in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]:
         return jsonify({"detail": "Недопустимый формат файла (.jpg, .jpeg, .png, .webp)"}), 400
 
-    eq = storage_service.get_equipment_by_id(equipment_id)
+    eq = _storage().get_equipment_by_id(equipment_id)
     if eq:
         eq_name = eq.name
         comp_age = eq.component_age
@@ -149,7 +220,11 @@ def inspect_equipment_endpoint():
         defects=defects
     )
 
-    storage_service.increment_inspection_count(equipment_id)
+    try:
+        _storage().increment_inspection_count(equipment_id)
+    except Exception:
+        # Счётчик инспекций второстепенен: акт не должен падать из-за него.
+        pass
 
     image_url = f"/static/uploads/{saved_filename}"
     annotated_url = f"/static/uploads/{annotated_path.name}" if annotated_path else None
@@ -179,7 +254,7 @@ def get_reports_endpoint():
         except ValueError:
             pass
 
-    reports = storage_service.get_reports(repair_status=repair_status, equipment_id=equipment_id)
+    reports = _storage(require_tasks=True).get_reports(repair_status=repair_status, equipment_id=equipment_id)
     return jsonify([r.model_dump() for r in reports])
 
 @flask_app.route("/api/reports", methods=["POST"])
@@ -190,7 +265,7 @@ def create_report_endpoint():
     except Exception as e:
         return jsonify({"detail": f"Ошибка валидации Pydantic: {e}"}), 422
 
-    created = storage_service.create_report(rep_in)
+    created = _storage(require_tasks=True).create_report(rep_in)
     return jsonify(created.model_dump()), 201
 
 if __name__ == "__main__":

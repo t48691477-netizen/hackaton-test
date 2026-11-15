@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 from pathlib import Path
 from typing import List, Tuple, Optional
-from PIL import Image
 
 from app.config import settings
 from app.schemas.defect import DefectItem, DefectCategory
@@ -15,62 +14,38 @@ class DefectDetectorService:
 
     def detect(self, image_path: Path) -> Tuple[List[DefectItem], Optional[Path]]:
         """
-        Запускает ансамбль из двух моделей:
-        1. Сегментация коррозии (Decizez/yolov-corrosion-detection)
-        2. Детекция дефектов сварных швов (avinashhm/welding-defect-yolov8-full-training)
-        
+        Запускает единую ONNX-модель детекции дефектов (weights/defects_yolo.onnx, CPU).
+
         Возвращает:
-        - Список объединенных дефектов (DefectItem)
+        - Список обнаруженных дефектов (DefectItem)
         - Путь к размеченному изображению с визуализацией
         """
-        all_defects: List[DefectItem] = []
-        corrosion_model = model_loader.load_corrosion_model()
-        welding_model = model_loader.load_welding_model()
+        model = model_loader.load_unified_model()
 
         # Загружаем изображение
         img_bgr = cv2.imread(str(image_path))
         if img_bgr is None:
             raise ValueError(f"Не удалось прочитать изображение по пути {image_path}")
 
-        h, w = img_bgr.shape[:2]
-
-        # 1. Инференс модели сегментации коррозии
-        if corrosion_model is not None:
+        all_defects: List[DefectItem] = []
+        if model is not None:
             try:
-                res_corrosion = corrosion_model.predict(
+                results = model.predict(
                     source=str(image_path),
-                    conf=settings.CONF_THRESHOLD_CORROSION,
+                    conf=settings.CONF_THRESHOLD,
+                    device="cpu",
                     verbose=False
                 )
-                corrosion_defects = self.converter.convert_results(
-                    results=res_corrosion,
-                    source_model=settings.CORROSION_MODEL_REPO,
-                    conf_threshold=settings.CONF_THRESHOLD_CORROSION,
-                    start_id=len(all_defects) + 1
+                all_defects = self.converter.convert_results(
+                    results=results,
+                    source_model=settings.UNIFIED_LOCAL_PATH.stem,
+                    conf_threshold=settings.CONF_THRESHOLD,
+                    start_id=1
                 )
-                all_defects.extend(corrosion_defects)
             except Exception as e:
-                print(f"[Detector] Ошибка при инференсе модели коррозии: {e}")
+                print(f"[Detector] Ошибка при инференсе единой модели: {e}")
 
-        # 2. Инференс модели сварных швов
-        if welding_model is not None:
-            try:
-                res_welding = welding_model.predict(
-                    source=str(image_path),
-                    conf=settings.CONF_THRESHOLD_WELDING,
-                    verbose=False
-                )
-                welding_defects = self.converter.convert_results(
-                    results=res_welding,
-                    source_model=settings.WELDING_MODEL_REPO,
-                    conf_threshold=settings.CONF_THRESHOLD_WELDING,
-                    start_id=len(all_defects) + 1
-                )
-                all_defects.extend(welding_defects)
-            except Exception as e:
-                print(f"[Detector] Ошибка при инференсе модели сварки: {e}")
-
-        # 3. Генерация аннотированного изображения
+        # Генерация аннотированного изображения
         annotated_path = self._draw_annotations(img_bgr, all_defects, image_path)
 
         return all_defects, annotated_path

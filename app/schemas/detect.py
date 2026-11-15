@@ -13,8 +13,7 @@ class FastDefectItem(BaseModel):
 
 
 class ModelLoadedStatus(BaseModel):
-    corrosion: bool = False
-    welding: bool = False
+    unified: bool = False
 
 
 class DetectResponse(BaseModel):

@@ -15,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -36,12 +35,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import ru.cyber102.arinspector.R
-import ru.cyber102.arinspector.data.model.DetailedInspectResponse
 import ru.cyber102.arinspector.data.model.EquipmentDto
 import ru.cyber102.arinspector.ui.components.EquipmentStateBadge
 import ru.cyber102.arinspector.ui.components.PrimaryActionButton
 import ru.cyber102.arinspector.ui.components.SecondaryActionButton
-import ru.cyber102.arinspector.ui.components.SeverityBadge
 import ru.cyber102.arinspector.ui.theme.KstColors
 import ru.cyber102.arinspector.ui.theme.PromScanShapesTokens
 import ru.cyber102.arinspector.util.Formatters
@@ -222,143 +219,6 @@ private fun PassportKeyValueRow(label: String, value: String) {
             color = KstColors.TextPrimary,
             fontWeight = FontWeight.Medium
         )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DetailedInspectionSheet(
-    detail: DetailedInspectResponse,
-    onDismiss: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = KstColors.Surface
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.scanner_detailed_title),
-                style = MaterialTheme.typography.headlineMedium,
-                color = KstColors.TextPrimary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = detail.summary.orEmpty().ifBlank { "—" },
-                style = MaterialTheme.typography.bodyMedium,
-                color = KstColors.TextSecondary
-            )
-
-            val findings = detail.findings.orEmpty()
-            if (findings.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = stringResource(R.string.scanner_detailed_findings),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = KstColors.TextPrimary
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                findings.forEach { finding ->
-                    Surface(
-                        shape = PromScanShapesTokens.Control,
-                        color = KstColors.Background,
-                        border = BorderStroke(1.dp, KstColors.Border),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = finding.title ?: "Дефект",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = KstColors.TextPrimary,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                SeverityBadge(severity = finding.severity)
-                            }
-                            if (!finding.description.isNullOrBlank()) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = finding.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = KstColors.TextSecondary
-                                )
-                            }
-                            if (!finding.recommendation.isNullOrBlank()) {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = finding.recommendation,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = KstColors.Accent,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            val causes = detail.probableCauses.orEmpty()
-            if (causes.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(14.dp))
-                HorizontalDivider(color = KstColors.Border)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = stringResource(R.string.scanner_detailed_causes),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = KstColors.TextPrimary
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                causes.forEach { cause ->
-                    Text(
-                        text = "• $cause",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = KstColors.TextPrimary,
-                        modifier = Modifier.padding(vertical = 2.dp)
-                    )
-                }
-            }
-
-            val steps = detail.recommendationSteps.orEmpty()
-            if (steps.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(14.dp))
-                HorizontalDivider(color = KstColors.Border)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = stringResource(R.string.scanner_detailed_steps),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = KstColors.TextPrimary
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                steps.forEachIndexed { idx, step ->
-                    Text(
-                        text = "${idx + 1}. $step",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = KstColors.TextPrimary,
-                        modifier = Modifier.padding(vertical = 3.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-            PrimaryActionButton(
-                text = stringResource(R.string.close),
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
     }
 }
 

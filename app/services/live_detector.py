@@ -16,24 +16,16 @@ class LiveDetectorService:
         self.converter = converter or YOLOOutputConverter()
 
     def detect(self, image_bgr: Any, conf: float, imgsz: int) -> tuple[list[DefectItem], dict[str, bool]]:
-        models = (
-            ("corrosion", self.loader.load_corrosion_model(), settings.CORROSION_MODEL_REPO),
-            ("welding", self.loader.load_welding_model(), settings.WELDING_MODEL_REPO),
-        )
-        loaded = {name: model is not None for name, model, _ in models}
-        if not any(loaded.values()):
+        model = self.loader.load_unified_model()
+        loaded = {"unified": model is not None}
+        if model is None:
             raise ModelsUnavailableError("No YOLO model is available")
 
-        defects: list[DefectItem] = []
-        for name, model, source in models:
-            if model is not None:
-                results = model.predict(source=image_bgr, conf=conf, imgsz=imgsz, verbose=False)
-                defects.extend(
-                    self.converter.convert_results(
-                        results=results,
-                        source_model=source,
-                        conf_threshold=conf,
-                        start_id=len(defects) + 1,
-                    )
-                )
+        results = model.predict(source=image_bgr, conf=conf, imgsz=imgsz, device="cpu", verbose=False)
+        defects = self.converter.convert_results(
+            results=results,
+            source_model=settings.UNIFIED_LOCAL_PATH.stem,
+            conf_threshold=conf,
+            start_id=1,
+        )
         return defects, loaded

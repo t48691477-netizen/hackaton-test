@@ -50,8 +50,8 @@ def test_valid_jpeg_converts_fast_contract(client, monkeypatch):
             return [DefectItem(
                 id="defect_1", label="Rust", category=DefectCategory.CORROSION,
                 confidence=0.9, bbox=[1, 2, 3, 4], bbox_normalized=[0.1, 0.2, 0.3, 0.4],
-                polygon=[[0.1, 0.2], [0.3, 0.4]], model_source="corrosion",
-            )], {"corrosion": True, "welding": False}
+                polygon=[[0.1, 0.2], [0.3, 0.4]], model_source="unified",
+            )], {"unified": True}
 
     monkeypatch.setattr(detect_router, "live_detector", Detector())
     response = post(client, params={"conf": 0.4, "imgsz": 640})
@@ -63,7 +63,7 @@ def test_valid_jpeg_converts_fast_contract(client, monkeypatch):
         }],
         "frame_id": 42,
         "inference_ms": response.json()["inference_ms"],
-        "model_loaded": {"corrosion": True, "welding": False},
+        "model_loaded": {"unified": True},
     }
     assert response.json()["inference_ms"] >= 0
 
@@ -91,16 +91,11 @@ def test_query_validation(client):
 def test_service_uses_converter_for_loaded_models(monkeypatch):
     class Loader:
         def __init__(self):
-            self.corrosion_model = None
-            self.welding_model = None
+            self.unified_model = None
 
-        def load_corrosion_model(self):
-            self.corrosion_model = Model()
-            return self.corrosion_model
-
-        def load_welding_model(self):
-            self.welding_model = None
-            return None
+        def load_unified_model(self):
+            self.unified_model = Model()
+            return self.unified_model
 
     class Model:
         def predict(self, **kwargs):
@@ -111,21 +106,20 @@ def test_service_uses_converter_for_loaded_models(monkeypatch):
 
     class Converter:
         def convert_results(self, **kwargs):
-            assert kwargs["source_model"]
+            assert kwargs["source_model"] == "defects_yolo"
             return ["converted"]
 
     service = LiveDetectorService(loader=Loader(), converter=Converter())
     defects, loaded = service.detect(np.zeros((8, 8, 3)), 0.3, 320)
     assert defects == ["converted"]
-    assert loaded == {"corrosion": True, "welding": False}
+    assert loaded == {"unified": True}
 
 
 def test_service_reports_no_models_unavailable():
     class Loader:
-        def load_corrosion_model(self):
-            return None
+        unified_model = None
 
-        def load_welding_model(self):
+        def load_unified_model(self):
             return None
 
     with pytest.raises(ModelsUnavailableError):
@@ -138,7 +132,7 @@ def test_rate_limit_returns_retry_after(client, monkeypatch):
 
     class Detector:
         def detect(self, *_args):
-            return [], {"corrosion": True, "welding": False}
+            return [], {"unified": True}
 
     monkeypatch.setattr(detect_router, "live_detector", Detector())
     assert post(client).status_code == 200
@@ -191,7 +185,7 @@ def test_busy_detector_returns_503_without_waiting(client, monkeypatch):
         def detect(self, *_args):
             entered.set()
             release.wait(timeout=5)
-            return [], {"corrosion": True, "welding": False}
+            return [], {"unified": True}
 
     monkeypatch.setattr(detect_router, "live_detector", Detector())
     first_result = []

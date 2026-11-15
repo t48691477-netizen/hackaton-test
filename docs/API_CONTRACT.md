@@ -1,716 +1,345 @@
-# ПромСкан — контракт frontend ↔ backend
+# ПромСкан: контракты API и клиентов
 
-Этот файл описывает целевой контракт React-панели, а не API, доступный сейчас.
-В репозитории есть отдельный TOiR FastAPI-сервис (`app.main`) и Android-сервис
-(`backend/server.py`), но их endpoint'ы и схемы не соответствуют контракту ниже.
-Кроме того, в текущей frontend-ветке отсутствуют импортируемые `src/lib/*`
-модули, поэтому клиент пока не собирается и не подключён к TOiR API.
+FastAPI-приложение `app.main` сохраняет два HTTP-контракта: основной legacy
+`/api` и совместимый формат `/front/api`. У них разные схемы запросов/ответов,
+статусы и authorization. Не считать один префикс alias другого. Android
+Retrofit объявляет `/api/auth/*` для входа и `/front/api/*` для оборудования,
+осмотра и задач. React UI в текущем checkout остаётся demo-only: HTTP-клиент,
+который вызывает эти маршруты, отсутствует.
 
-При интеграции согласуйте контракт этого документа с реальными Pydantic-схемами
-и восстановленными типами/клиентом React; сам документ не утверждает, что
-описанные здесь endpoint'ы уже реализованы. Текущее состояние frontend и порядок
-интеграции: [README.md](../README.md).
+Документ сверён с `app/routers/`, `app/schemas/`, `app/services/storage.py` и
+Android Retrofit-интерфейсом. Он описывает текущую реализацию, но не утверждает,
+что SQL уже применён или production-проверен. Настройка PostgreSQL описана в
+[`DEPLOY.md`](DEPLOY.md).
 
-## 1. Общие правила
+## Общие правила
 
-- Целевой backend: FastAPI; пример базы URL — `http://127.0.0.1:8000`.
-- Swagger UI `/docs` с Pydantic-схемами и OpenAPI `/openapi.json` должны быть
-  доступны на целевом React-сервисе. У существующего TOiR API они есть, но
-  наличие этих маршрутов само по себе не означает совместимость контрактов.
-- JSON использует `snake_case`.
-- Все координаты нормализованы: `0.0 … 1.0`, начало координат — левый верхний
-  угол изображения.
-- Bounding box: `[x_min, y_min, x_max, y_max]`.
-- Bounding box имеет `x_min < x_max`, `y_min < y_max`; это не формат YOLO
-  `[x_center, y_center, width, height]` и не пиксели. Перед нормализацией
-  восстанавливать координаты относительно исходного кадра после resize/letterbox.
-- Segmentation polygon: `[[x, y], ...]` — минимум три нормализованные точки.
-  Контур замыкается при отрисовке; повторять первую точку последней необязательно.
-- `confidence` нормализован в `0..1`.
-- Время: ISO 8601 UTC (`2026-11-13T18:30:00Z`).
-- Ошибки: `404` — объект не найден, `422` — валидация, `503` — недоступная
-  модель/LLM в запрошенном real-режиме. Для прикладных ошибок —
-  `{"detail": "понятное объяснение"}`; стандартный FastAPI `422` может иметь
-  массив ошибок в `detail`, текущий клиент тогда покажет только `HTTP 422`.
-- CORS будущего сервиса для разработки: `http://127.0.0.1:5173`,
-  `http://localhost:5173`; production-origin согласовать отдельно.
-- `multipart/form-data` отправлять как `FormData`, не задавая `Content-Type`
-  вручную: браузер сам добавляет boundary.
-- Ответы с `{"...": "ИмяСхемы"}` ниже — сокращённая запись вложенной схемы,
-  а не готовый JSON для отправки; нужны все поля соответствующего типа.
+- Base URL локального сервера: `http://127.0.0.1:8000`.
+- `/docs`, `/redoc`, `/openapi.json` доступны, если `TOIR_DISABLE_DOCS` не
+  установлен в `true`; production proxy может скрывать документацию.
+- JSON использует `snake_case`. Все координаты bbox и polygon в ответах детекции
+  нормализованы относительно изображения в диапазон `0..1`, если схема явно
+  не указывает иное.
+- `multipart/form-data` отправлять как `FormData` или multipart parts; не
+  задавать `Content-Type` вручную.
+- `503` может означать ненастроенный/недоступный PostgreSQL, credentials
+  storage или недоступную модель. Сам `/health` не проверяет работу БД и не
+  выполняет inference.
+- CORS по умолчанию отключён. Для cross-origin клиента задайте точный список
+  origins через `TOIR_CORS_ORIGINS`.
 
-## 2. Перечисления
+## Маршруты и авторизация
 
-```text
-Severity       = low | medium | high
-ReportStatus   = open | in_progress | closed
-EquipmentState = operational | maintenance | fault
-VisionMode     = mock | real
-LlmMode        = mock | real
-Role           = director | admin | dispatcher | engineer
-Permission     = scan | dispatch | users
-InvitationStatus = not_sent | queued | sent | failed
-```
+| Метод и путь | Формат / назначение | Авторизация |
+|---|---|---|
+| `POST /api/auth/login` | вход по `access_key`, ответ с bearer token | публичный вход |
+| `GET /api/auth/me` | текущий account | Bearer |
+| `POST /api/auth/logout` | отзыв сессии, `204` | Bearer |
+| `GET /api/users` | список активных сотрудников | Bearer, permission `users` |
+| `POST /api/users` | создание сотрудника и отправка ключа, `201` | Bearer, permission `users` |
+| `POST /api/users/{employee_id}/access` | ротация ключа и отправка, `200` | Bearer, permission `users` |
+| `DELETE /api/users/{employee_id}` | деактивация сотрудника, `204` | Bearer, permission `users` |
+| `GET /api/equipment` | legacy `EquipmentResponse[]` | Bearer, permission `scan` |
+| `GET /api/equipment/{equipment_id}` | legacy `EquipmentResponse` | Bearer, permission `scan` |
+| `POST /api/equipment` | JSON `EquipmentCreate`, ответ `201 EquipmentResponse` | Bearer, permission `users` |
+| `POST /api/inspect` | multipart, legacy `InspectResponse` | Bearer, permission `scan` |
+| `POST /api/reports` | JSON `ReportCreate`, legacy `ReportResponse` | Bearer, permission `scan` |
+| `GET /api/reports` | legacy reports; query `repair_status`, `equipment_id` | Bearer, permission `dispatch` |
+| `GET /api/reports/{report_id}` | legacy `ReportResponse` | Bearer, permission `dispatch` |
+| `PATCH /api/reports/{report_id}/status` | JSON `ReportStatusUpdate` | Bearer, permission `dispatch` |
+| `POST /api/detect` | JPEG body, компактная live-детекция | Bearer, permission `scan` |
+| `GET /front/api/equipment` | совместимая карточка оборудования | сейчас без Bearer |
+| `GET /front/api/equipment/{equipment_id}` | одна совместимая карточка | сейчас без Bearer |
+| `POST /front/api/inspect` | multipart, быстрый результат осмотра | сейчас без Bearer |
+| `GET/POST /front/api/reports` | совместимый формат задач | сейчас без Bearer |
+| `GET /front/api/reports/{report_id}` | совместимая задача | сейчас без Bearer |
+| `PATCH /front/api/reports/{report_id}/status` | JSON `{status, comment?}` | сейчас без Bearer |
+| `POST /front/api/mail/access-key` | SMTP отправка указанного ключа | сейчас без Bearer |
 
-Соответствие UI:
+У `/front/api/*` в текущей реализации нет bearer-проверок. Учитывайте это до
+публикации сервиса; роли и permission основного `/api` не распространяются на
+эти маршруты. Маршруты `/api/auth/confirm-email`,
+`/front/api/inspect/detailed` и Android detailed-analysis endpoint отсутствуют.
 
-| API | UI |
-|---|---|
-| `high` | Критический |
-| `medium` | Внимание |
-| `low` | Наблюдение |
-| `open` | Открыт |
-| `in_progress` | В работе |
-| `closed` | Выполнено |
+## Параметры доступа `/api`
 
-`ReportStatus` описывает не только акт, но и **задачу на восстановление**:
-`open` — задача создана и назначена, `in_progress` — сотрудник взял её в
-работу, `closed` — сотрудник отметил выполнение. Переходы выполняются только
-по порядку: `open → in_progress → closed`.
+Роли: `director`, `admin`, `dispatcher`, `engineer`. Permissions:
+`scan`, `dispatch`, `users`. `director`/`admin` получают все permissions,
+`dispatcher` — `scan` и `dispatch`, `engineer` — `scan`. Сейчас эти проверки
+применяются на защищённых `/api` маршрутах.
 
-## 2.1. Аутентификация по ключу
-
-Целевая схема: пользователь вводит **индивидуальный 10-значный ключ**, сервер
-проверяет его хеш и выдаёт сессию. Ключ не хранится в открытом виде ни в БД,
-ни в браузере. Это отдельный контракт от `Report`; текущий frontend реализует
-его локально как заготовку.
-
-Правила ключа:
-
-- длина ровно 10 символов;
-- алфавит `A-HJ-NP-Z2-9` (без `I`, `O`, `0`, `1`) — 32 символа;
-- сравнение без учёта регистра, пробелы и дефисы игнорируются;
-- сервер хранит `key_salt` (16 байт, hex) и `key_hash`;
-- production-хеш: Argon2id; демо-frontend использует PBKDF2-SHA-256,
-  120 000 итераций, 32 байта;
-- ключ отправляется только письмом на email сотрудника и не возвращается
-  администратору в API/UI;
-- перевыпуск инвалидирует старый ключ и отзывает активные сессии;
-- неудачные попытки ограничиваются rate limiting и аудитом.
-
-Роли и права:
-
-| Роль | `scan` | `dispatch` | `users` |
-|---|---:|---:|---:|
-| `director` | да | да | да |
-| `admin` | да | да | да |
-| `dispatcher` | да | да | нет |
-| `engineer` | да | нет | нет |
-
-`director` — единственный, кто может создавать `admin`; `admin` создаёт
-`dispatcher` и `engineer`. Рабочему в веб-панели доступен только сканер;
-`/task/{id}` — отдельный мобильный экран. Сервер обязан проверять права на
-каждом запросе, а не доверять роли из тела запроса или `sessionStorage`.
-
-## 3. Схемы
-
-### SpecItem
+`POST /api/auth/login` принимает JSON:
 
 ```json
-{ "label": "Мощность", "value": "38", "unit": "кВт" }
+{"access_key":"PSCENG5542"}
 ```
 
-`unit` может быть `null`.
+Ключ нормализуется (верхний регистр, пробелы и дефисы удаляются) и проверяется
+по формату из десяти символов алфавита `A-HJ-NP-Z2-9`. Ответ `200` содержит
+`session_token`, `expires_at` и `account`. Токен передаётся последующими
+запросами в `Authorization: Bearer <session_token>`. Сервер хранит Argon2id
+key hash и SHA-256 hash session token в credentials-БД; срок сессии восемь
+часов. Неверный формат даёт `422`, неверный ключ `401`, ограничение попыток
+входа `429`. Logout отзывает токен и отвечает `204`.
 
-### EquipmentSummary
+### `/api/users`
+
+`GET /api/users` возвращает только активных сотрудников из employees-БД,
+отсортированных по `full_name`, затем по `id`. Каждый элемент содержит только
+публичные поля `id`, `full_name`, `email` и `role`; `is_active`, хеши ключей и
+другие credential-поля в ответ не попадают. Маршрут требует Bearer с permission
+`users` (`director` и `admin`). При недоступности employees-БД возвращается
+`503`.
+
+`DELETE /api/users/{employee_id}` принимает UUID в path и также требует Bearer
+с permission `users`. Сначала в отдельной транзакции employees-БД строка
+сохраняется и получает `is_active = false`, затем в отдельной транзакции
+credentials-БД удаляется её access-key credential. Внешние ключи удаляют вместе
+с credential все зависимые `auth_sessions` и `email_verification_codes`.
+Операция отвечает `204` без тела. Повторная деактивация существующего сотрудника
+идемпотентна и повторяет отзыв credential. Если сотрудник не найден, ответ
+`404`; некорректный UUID даёт `422`; недоступность employees или credentials
+даёт `503`. Из-за раздельных баз ошибка второго шага оставляет сотрудника
+неактивным и также возвращает `503`.
+
+`POST /api/users` принимает JSON `{ "full_name", "email", "role" }`; имя
+обрезается по краям, email приводится к нижнему регистру, лишние поля и
+недопустимые роли отклоняются. `director` может создать `admin`, `admin` — только
+`dispatcher` или `engineer`. Конфликт уникального email возвращает `409`. Сервер
+генерирует ключ из 10 символов алфавита `A-HJ-NP-Z2-9`, записывает только
+Argon2id PHC-хеш с отдельной 16-байтовой солью и синхронно отправляет ключ через
+SMTP. Успешный ответ `201`:
 
 ```json
 {
-  "id": "pump-cns-38-220",
-  "name": "Насосный агрегат ЦНС 38-220",
-  "inventory_number": "INV-2048-17",
-  "category": "Насосное оборудование",
-  "location": "Цех №3",
-  "state": "operational"
-}
-```
-
-### EquipmentNode
-
-```json
-{
-  "id": "node-bearing",
-  "name": "Подшипниковый узел",
-  "specs": [
-    { "label": "Тип", "value": "SKF 6310", "unit": null },
-    { "label": "Ресурс", "value": "12000", "unit": "ч" }
-  ]
-}
-```
-
-### EquipmentDetail
-
-```json
-{
-  "id": "pump-cns-38-220",
-  "name": "Насосный агрегат ЦНС 38-220",
-  "inventory_number": "INV-2048-17",
-  "category": "Насосное оборудование",
-  "location": "Цех №3",
-  "state": "operational",
-  "manufacturer": "ПромМаш",
-  "model": "ЦНС 38-220",
-  "commissioned_at": "2019-06-01",
-  "service_life_years": 10,
-  "last_maintenance_at": "2026-04-18",
-  "next_maintenance_at": "2026-10-18",
-  "specs": [
-    { "label": "Подача", "value": "38", "unit": "м³/ч" },
-    { "label": "Напор", "value": "220", "unit": "м" }
-  ],
-  "nodes": [],
-  "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-11-13T18:30:00Z"
-}
-```
-
-### Defect
-
-```json
-{
-  "id": "defect-crack-1",
-  "label": "Трещина корпуса",
-  "confidence": 0.94,
-  "severity": "high",
-  "bbox": [0.16, 0.24, 0.50, 0.54],
-  "polygon": [[0.16, 0.24], [0.50, 0.24], [0.50, 0.54], [0.16, 0.54]],
-  "node_id": "node-housing",
-  "source_model": "crack",
-  "recommendation": "Остановить агрегат и провести ультразвуковой контроль."
-}
-```
-
-`polygon` может быть `null`, если модель вернула только бокс.
-`node_id` может быть `null`, если узел не определён.
-`source_model`: `corrosion` или `crack`.
-
-Ненулевой `node_id` должен существовать в `InspectionResult.equipment.nodes`.
-Реальные классы и их перевод в `label` согласовать после проверки весов;
-демо-названия не гарантируют, что модели умеют находить такие дефекты.
-
-У дефекта **нет** собственных технических характеристик: длина трещины,
-раскрытие, глубина, допуск и зона не предсказываются моделями. Все
-характеристики берутся из `EquipmentDetail.nodes[].specs` по `node_id`.
-
-### LlmAssessment
-
-Строгий JSON, который обязана вернуть LLM:
-
-```json
-{
-  "criticality": "high",
-  "probable_cause": "Усталостная трещина из-за вибрации и превышения ресурса.",
-  "recommendation_steps": [
-    "Остановить агрегат.",
-    "Провести ультразвуковой контроль корпуса.",
-    "Согласовать ремонт с главным инженером."
-  ]
-}
-```
-
-Ограничения: `criticality` — только `low | medium | high`;
-`probable_cause` — непустая строка; `recommendation_steps` — 1–10 непустых
-строк. Дополнительные ключи запрещены. Системный промпт «Главный эксперт
-ТОиР» и требования к его входу описаны в [README.md](../README.md), раздел 6.
-
-### InspectionResult
-
-```json
-{
-  "inspection_id": "insp-20261113-0001",
-  "equipment": { "...": "EquipmentDetail" },
-  "defects": [{ "...": "Defect" }],
-  "llm": {
-    "criticality": "high",
-    "probable_cause": "Усталостная трещина из-за вибрации.",
-    "recommendation_steps": ["Остановить агрегат.", "Провести контроль."]
+  "account": {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "full_name": "Пётр Сидоров",
+    "email": "p.sidorov@promscan.ru",
+    "role": "dispatcher"
   },
-  "summary": "Обнаружена критическая трещина корпуса.",
-  "meta": {
-    "vision_mode": "mock",
-    "llm_mode": "mock",
-    "models": {
-      "corrosion": "Decizez/yolov-corrosion-detection",
-      "crack": "avinashhm/welding-defect-yolov8-full-training"
-    },
-    "processing_ms": 42,
-    "analyzed_at": "2026-11-13T18:30:00Z"
-  }
-}
-```
-
-`defects` может быть пустым массивом. `meta.processing_ms` — измеренная
-сервером неотрицательная длительность обработки, `analyzed_at` — серверное
-UTC-время. `vision_mode` и `llm_mode` независимо отражают фактически
-использованные режимы, а `models` — использованные модели. HTTP-ответ может
-содержать серверный mock: `VITE_USE_MOCK_API=false` не делает инференс real.
-
-При недоступных ресурсах или невалидном ответе LLM в real-режиме — понятная
-ошибка `503` и лог без секретов. Если отдельно согласован fallback, его
-нельзя скрывать: соответствующий режим в `meta` должен быть `mock`.
-
-### EmployeeRef
-
-Безопасный снимок исполнителя, который хранится внутри задачи. Пароль, email
-и другие учётные данные в `Report` не попадают.
-
-```json
-{
-  "id": "emp-003",
-  "full_name": "Алексей Смирнов"
-}
-```
-
-`assignee` в `Report` может быть `null`, если задача ещё не назначена. В
-реальном сервисе `id` ссылается на запись сотрудника; сам справочник
-сотрудников и аутентификация — отдельная задача (см. раздел 7).
-
-### AuthAccount
-
-Учётная запись для входа по ключу. В ответах API **никогда** не возвращаются
-`key_hash`, `key_salt` и открытый ключ.
-
-```json
-{
-  "id": "emp-003",
-  "full_name": "Алексей Смирнов",
-  "email": "a.smirnov@promscan.ru",
-  "role": "engineer",
-  "permissions": ["scan"],
   "invitation": {
     "status": "sent",
-    "email": "a.smirnov@promscan.ru",
     "provider": "smtp",
-    "sent_at": "2026-11-13T09:07:00Z",
-    "error": null
-  },
-  "key_created_at": "2026-11-13T09:07:00Z",
-  "created_at": "2026-11-13T09:07:00Z",
-  "updated_at": "2026-11-13T09:07:00Z"
-}
-```
-
-`invitation.status`: `not_sent | queued | sent | failed`. `provider` —
-`smtp | gmail | mock | null`; конкретный провайдер согласуется отдельно.
-
-### Session
-
-Клиентская модель сессии в демо; в production заменяется HttpOnly-cookie.
-
-```json
-{
-  "accountId": "emp-003",
-  "fullName": "Алексей Смирнов",
-  "email": "a.smirnov@promscan.ru",
-  "role": "engineer",
-  "issuedAt": "2026-11-13T09:10:00Z"
-}
-```
-
-Сессия действует только в текущей вкладке (`sessionStorage`). Новая вкладка
-должна снова запросить ключ. Серверная сессия в production должна быть
-короткоживущей, с продлением и отзывом.
-
-### Report
-
-`Report` — это одновременно акт осмотра и задача на восстановление
-повреждённого узла.
-
-```json
-{
-  "id": "report-0001",
-  "equipment_id": "pump-cns-38-220",
-  "inspection_id": "insp-20261113-0001",
-  "status": "open",
-  "comment": "Требуется внеплановая проверка.",
-  "photo_url": "/media/reports/report-0001.jpg",
-  "result": { "...": "InspectionResult" },
-  "assignee": { "id": "emp-003", "full_name": "Алексей Смирнов" },
-  "started_at": null,
-  "completed_at": null,
-  "repair_comment": null,
-  "created_at": "2026-11-13T18:31:00Z",
-  "updated_at": "2026-11-13T18:31:00Z"
-}
-```
-
-| Поле | Тип | Правило |
-|---|---|---|
-| `assignee` | `EmployeeRef \| null` | Исполнитель задачи; снимок имени на момент назначения |
-| `started_at` | ISO 8601 UTC `\| null` | Ставится сервером при первом переходе в `in_progress` |
-| `completed_at` | ISO 8601 UTC `\| null` | Ставится сервером при переходе в `closed` |
-| `repair_comment` | `string \| null` | Комментарий сотрудника при завершении задачи |
-
-`photo_url` может быть `null`, если фото не прикладывали. При успешном
-сохранении приложенного фото сервер возвращает доступный клиенту URL
-из S3/MinIO (абсолютный или согласованный относительный), а не локальный путь.
-Для относительного URL клиенту нужно разрешать его относительно API/media
-origin, а не автоматически относительно адреса Vite.
-
-`equipment_id` должен совпадать с `result.equipment.id`, а `inspection_id` —
-с `result.inspection_id`. ID и даты выдаёт сервер. В текущих mock-данных часть
-этих связей не согласована — это ограничение демо, не правило для сервера.
-
-Новая задача из веб-панели создаётся в статусе `open`, с `assignee` и без
-`started_at`/`completed_at`. Завершённая задача хранит и `started_at`, и
-`completed_at`; `repair_comment` может быть `null`, если сотрудник не оставил
-комментарий.
-
-## 4. Эндпоинты
-
-### GET `/api/equipment`
-
-Список оборудования.
-
-Ответ `200`: `EquipmentSummary[]`.
-
-### GET `/api/equipment/{equipment_id}`
-
-Детальная карточка агрегата с узлами и техническими характеристиками.
-
-Ответ `200`: `EquipmentDetail`. `404`, если не найден.
-
-### POST `/api/equipment`
-
-Создание или редактирование. Если `id` передан — обновление, иначе создание.
-
-Тело: `EquipmentUpsert` — поля `EquipmentDetail`, кроме `created_at`,
-`updated_at`; `id` опционален.
-
-Ответ `200` (обновление) или `201` (создание): `EquipmentDetail`.
-
-Ожидается полная карточка по схеме `EquipmentUpsert`. Текущий frontend-метод
-`saveEquipment()` принимает `Partial<EquipmentDetail>` только на уровне
-TypeScript; это не означает, что сервер должен принимать неполную карточку.
-
-### POST `/api/inspect`
-
-`multipart/form-data`:
-
-- `file` — изображение (JPEG/PNG/WebP), обязательно;
-- `equipment_id` — строка, обязательно.
-
-Клиент проверяет только `image/*` и размер до 10 МБ. Сервер обязан проверять
-сигнатуру, допустимый формат и лимит независимо; имя `frame.jpg` не гарантирует
-JPEG, так как загруженное фото клиент передаёт исходным файлом.
-
-Backend:
-
-1. Принимает файл.
-2. Запускает corrosion-сегментацию `Decizez/yolov-corrosion-detection` и
-   crack-детекцию `avinashhm/welding-defect-yolov8-full-training`.
-3. Конвертирует маски в `polygon`, боксы в `bbox`.
-4. Формирует `LlmAssessment` через Главного эксперта ТОиР.
-5. Возвращает `InspectionResult` в том же HTTP-ответе (без фоновой задачи
-   и опроса её статуса; фактическое время обработки не фиксировано).
-
-Ответ `200`: `InspectionResult`; `404` — нет оборудования; `422` — ошибка
-входных данных; `503` — запрошенный real-сервис недоступен. Повторные вызовы
-frontend по таймеру — отдельные осмотры, не серверный поток/WebSocket.
-
-### POST `/api/reports`
-
-Создание акта и задачи на восстановление. `multipart/form-data`:
-
-- `equipment_id` — строка, обязательно;
-- `inspection_id` — строка, обязательно;
-- `status` — `open | in_progress | closed`, обязательно; веб-панель передаёт
-  `open`, потому что задачу начинает и завершает сотрудник;
-- `comment` — строка, опционально;
-- `photo` — файл, опционально;
-- `payload` — JSON-строка `InspectionResult`, обязательно;
-- `assignee_id` — строка, опционально. ID сотрудника, которому передаётся
-  задача. Frontend требует выбора исполнителя; сервер проверяет, что
-  сотрудник существует, и возвращает `assignee` как `EmployeeRef`.
-
-Ответ `201`: сохранённый `Report`; `404` — нет связанного оборудования или
-сотрудника; `422` — невалидные поля, JSON `payload` или несогласованные ID.
-Сервер проверяет вложенный результат, не доверяет клиентскому `payload` как
-диагнозу. Акт должен быть доступен через GET после перезапуска сервиса;
-возврат объекта без записи в хранилище не считается сохранением.
-
-Для новой задачи сервер обязан вернуть `status: "open"`, `started_at: null`,
-`completed_at: null`, `repair_comment: null` и заполненный `assignee`, если
-передан `assignee_id`. Если задача создана без исполнителя, она остаётся
-`open`, но начать её нельзя до назначения.
-
-### GET `/api/reports`
-
-Список актов и задач для диспетчера. Query: `status` опционально.
-
-Ответ `200`: `Report[]`, пустой список — `[]`. Диспетчер видит в каждой
-строке `assignee` и `status`; после действий сотрудника сервер возвращает
-обновлённые значения, а не кэш клиента.
-
-### GET `/api/reports/{report_id}`
-
-Детальная карточка акта/задачи. Используется мобильным экраном
-`/task/{report_id}`. Ответ `200`: `Report`, `404` если нет.
-
-### PATCH `/api/reports/{report_id}/status`
-
-Переход задачи по статусам. Тело — JSON:
-
-```json
-{ "status": "in_progress" }
-```
-
-```json
-{ "status": "closed", "comment": "Крепление заменено, момент затяжки проверен." }
-```
-
-- `status` — только `in_progress` или `closed`;
-- `comment` — опционально; при завершении сохраняется в `repair_comment`.
-
-Правила перехода:
-
-| Текущий статус | Запрошенный | Результат |
-|---|---|---|
-| `open` | `in_progress` | `started_at = now`, `completed_at = null` |
-| `in_progress` | `closed` | `completed_at = now`, `repair_comment = comment` |
-| тот же | тот же | `200`, объект не меняется (идемпотентный повтор) |
-| `open` | `closed` | `409` — нельзя завершить неначатую задачу |
-| `closed` | `in_progress` | `409` — завершённую задачу нельзя вернуть в работу |
-| `assignee = null` | `in_progress` | `409` — сначала назначить исполнителя |
-
-Ответ `200`: обновлённый `Report` с новыми `status`, `started_at`,
-`completed_at`, `repair_comment`, `updated_at`; `404` — задачи нет;
-`409` — недопустимый переход; `422` — невалидное тело.
-
-В реальном сервисе **исполнитель определяется серверной сессией**, а не телом
-запроса. Сервер обязан проверить, что действие выполняет назначенный
-сотрудник, и вернуть `403`, если это не так. В текущем demo-режиме сессии нет:
-`src/lib/api.ts` меняет mock-задачу локально, поэтому любой браузер может
-нажать кнопку. Это ограничение демо, а не правило для production. Клиент
-специально не отправляет `assignee_id` в PATCH, чтобы backend не доверял
-подставленному идентификатору.
-
-После любого успешного перехода задача должна быть видна диспетчеру через
-`GET /api/reports` и сотруднику через `GET /api/reports/{report_id}` с
-одинаковыми статусом и исполнителем.
-
-## 4.1. Эндпоинты доступа
-
-Эти эндпоинты **не входят в текущее ТЗ backend** и не реализованы на сервере.
-Они описаны как целевой контракт, чтобы frontend-заготовка входа, сотрудников
-и писем не была переделана при интеграции.
-
-### POST `/api/auth/login`
-
-Вход по индивидуальному ключу.
-
-```json
-{ "access_key": "PSCENG5542" }
-```
-
-Ответ `200`:
-
-```json
-{
-  "session_token": "opaque-server-session",
-  "expires_at": "2026-11-13T21:10:00Z",
-  "account": { "...": "AuthAccount" }
-}
-```
-
-Правила:
-
-- ключ нормализуется (верхний регистр, без пробелов/дефисов);
-- неверный формат — `422`; неверный ключ — `401` с нейтральным
-  `{"detail": "Ключ не подошёл."}`;
-- после 5–10 неудачных попыток — `429` и задержка/блокировка;
-- успешный вход возвращает HttpOnly `Secure` `SameSite=Lax/Strict` cookie;
-  `session_token` в JSON — только для не-cookie клиентов по отдельному
-  согласованию;
-- ключ не логируется и не возвращается;
-- сервер проверяет хеш (Argon2id) и активность учётной записи.
-
-### POST `/api/auth/logout`
-
-Отзывает текущую сессию. Ответ `204`. Клиент очищает локальную сессию.
-
-### GET `/api/auth/me`
-
-Возвращает `AuthAccount` текущей сессии. Ответ `401`, если сессии нет.
-
-### GET `/api/users`
-
-Список сотрудников. Доступ: `director | admin` (`users`).
-
-Ответ `200`: `AuthAccount[]`. Хеши и ключи не возвращаются.
-
-### POST `/api/users`
-
-Создание сотрудника и ключа. Доступ: `director | admin`.
-
-```json
-{
-  "full_name": "Пётр Сидоров",
-  "email": "p.sidorov@promscan.ru",
-  "role": "dispatcher"
-}
-```
-
-Правила:
-
-- `director` может создать `admin | dispatcher | engineer`;
-  `admin` — только `dispatcher | engineer`; попытка создать `director` или
-  `admin` от имени `admin` — `403`;
-- email нормализуется и проверяется на уникальность (`409` при дубликате);
-- сервер генерирует 10-значный ключ, сохраняет только хеш и отправляет ключ
-  письмом на email сотрудника; открытый ключ **не возвращается** клиенту;
-- ответ содержит `invitation.status = "queued"`; фактическая отправка не
-  должна блокировать создание пользователя;
-- ключ и код подтверждения никогда не пишутся в логи.
-
-Ответ `201`:
-
-```json
-{
-  "account": { "...": "AuthAccount" },
-  "invitation": {
-    "status": "queued",
-    "provider": "smtp",
-    "email": "p.sidorov@promscan.ru"
+    "email": "p.sidorov@promscan.ru",
+    "sent_at": "2026-11-15T10:30:00Z"
   }
 }
 ```
 
-`access_key` отсутствует в ответе: администратор не должен видеть ключ
-сотрудника. Ключ получает только владелец email. Повторный GET его также не
-возвращает.
+Plaintext ключ, `key_hash`, `key_salt`, `is_active` и поля credential не входят
+в ответ. Ошибка вставки credential или отправки письма запускает компенсационное
+удаление credential и employee-записи. Почтовые ошибки возвращают безопасные
+`429`, `502` или `503`, без секрета и деталей БД.
 
-### POST `/api/users/{user_id}/reissue-key`
+`POST /api/users/{employee_id}/access` не принимает тело. Активный сотрудник
+должен существовать; иначе `404`. Ключ администратора может перевыпустить только
+`director`; другим ролям возвращается `403`. Credential обновляется с новым
+Argon2id-хешем и явной солью; PostgreSQL trigger отзывает активные сессии при
+изменении хеша или соли. Затем ключ синхронно отправляется сотруднику. При
+ошибке отправки прежние хеш и соль восстанавливаются, что также отзывает уже
+существовавшие сессии; API возвращает безопасную SMTP-ошибку. Успешный ответ
+имеет ту же форму, что и создание, без plaintext ключа.
 
-Перевыпуск ключа. Доступ: `director | admin`; ключи администраторов
-перевыпускает только `director`. Старый ключ инвалидируется, все активные
-сессии пользователя отзываются, новый ключ уходит письмом,
-`invitation.status` становится `queued`.
-Ответ `200`: `{ "account": { "...": "AuthAccount" }, "invitation": { "...": "..." } }`.
-`access_key` в ответе отсутствует.
+Backend invitation states: `not_sent`, `sent`, `failed`; `queued` не используется,
+поскольку отправка синхронная. `/front/api/mail/access-key` отдельно отправляет
+переданный в запросе ключ через SMTP; он не создаёт employee или credentials и
+сейчас не требует Bearer.
 
-### POST `/api/users/{user_id}/invite`
+## Оборудование
 
-Повторная отправка письма с ключом/кодом подтверждения. Доступ:
-`director | admin`. Тело: `{ "email": "..." }` опционально.
+Основной `/api` возвращает legacy-модель `EquipmentResponse` из
+`app/schemas/equipment.py`: `id`, `name`, `serial_number`, `location`,
+`installation_date`, `component_age`, `last_maintenance_date`, `status`,
+`components`, `created_at`, `updated_at`, `inspection_count`.
 
-Ответ `202`: `{ "status": "queued", "provider": "smtp" }`.
-`503` — почтовый провайдер недоступен; `409` — приглашение уже отправлено
-недавно (защита от спама). Сервер обязан ограничивать частоту.
+`POST /api/equipment` принимает `EquipmentCreate`: эти поля без серверных дат и
+счётчика, `id` опционален. Реализация отвечает `201` и при создании, и при
+обновлении существующего ID. Каталог читается из `promscan.webapp_equipment` в
+каталожной БД. Таблица создаётся migration
+`database/migrations/005_webapp_catalog.sql`; эта миграция не заполняет каталог.
 
-### POST `/api/auth/confirm-email`
+Формат `/front/api/equipment` адаптирует запись к полям веб/Android DTO:
+`id`, `name`, `inventory_number`, `category`, `location`, `state`,
+`manufacturer`, `model`, `commissioned_at`, `service_life_years`,
+`last_maintenance_at`, `next_maintenance_at`, `specs`, `nodes`, `created_at`,
+`updated_at`. При отсутствии записи detail route возвращает `404`; inspect
+compatibility handler может сформировать fallback-представление для
+неизвестного ID.
 
-Заготовка подтверждения email по одноразовому коду из письма.
+## Детекция и осмотр
+
+Во всех путях обнаружения используется одна модель
+`weights/defects_yolo.onnx`, с переопределением пути через `UNIFIED_WEIGHTS`.
+Отдельных `CORROSION_WEIGHTS`, `OIL_WEIGHTS` и `WELDING_WEIGHTS` в текущей
+конфигурации нет. Модель запускается на CPU.
+
+### `POST /api/detect`
+
+Отправляется raw JPEG body (`Content-Type: image/jpeg`), опционально query
+`conf` (`0.10..0.85`, default `0.25`), `imgsz` (`320..1024`, default `640`) и
+header `X-Frame-Id`. Максимум body 5 MiB и размер стороны 4096 px. Ответ
+содержит `defects`, `frame_id`, `inference_ms`, `model_loaded.unified`.
+Требуется Bearer с `scan`.
+
+### `POST /api/inspect`
+
+Multipart поля: обязательные `file` и `equipment_id`. Handler проверяет
+расширение `.jpg`, `.jpeg`, `.png`, `.webp` или `.bmp`, сохраняет исходное
+изображение, вызывает единую YOLO-модель и LLM expert service, увеличивает
+счётчик инспекций и возвращает `InspectResponse`:
 
 ```json
-{ "email": "p.sidorov@promscan.ru", "code": "123456" }
+{
+  "equipment_id": "pump-402",
+  "equipment_name": "Насос",
+  "timestamp": "2026-11-15T10:00:00Z",
+  "defects_count": 1,
+  "defects": [],
+  "expert_opinion": {
+    "criticality": "medium",
+    "probable_cause": "Причина",
+    "recommendations": ["Проверить узел"]
+  },
+  "image_url": "/static/uploads/original.jpg",
+  "annotated_image_url": "/static/uploads/original_annotated.jpg"
+}
 ```
 
-Ответ `200`: `{ "confirmed": true }`; `410` — код истёк; `429` — слишком много
-попыток. Код хранится в виде хеша, живёт 10–15 минут и одноразовый.
+В текущей реализации невалидное расширение даёт `400`, ошибка сохранения или
+инференса может дать `500`. Если модель отсутствует или не загружается,
+детектор возвращает пустой список дефектов и сохраняет аннотированное исходное
+изображение. Неизвестный equipment ID не даёт `404` в этом handler: эксперт
+получает fallback-контекст. Формат ответа отличается от `/front/api/inspect`.
 
-### Почтовый провайдер (сервер)
+### `POST /front/api/inspect`
 
-Frontend **не отправляет письма**. `src/lib/email.ts` — только заготовка,
-которая возвращает `queued`. Будущий backend должен:
+Совместимый быстрый маршрут принимает multipart `file` и `equipment_id`.
+Возвращает `inspection_id`, совместимую карточку `equipment`, список `defects`,
+`condition_parameters`, rule-based `llm`, `summary` и `meta`. Для этого
+быстрого пути `meta.vision_mode` указывает `real`, `meta.llm_mode` — `mock`;
+причина и рекомендации кратко собираются из найденных категорий. Маршрут не
+выполняет отдельный detailed-analysis запрос.
 
-1. сгенерировать ключ и одноразовый код подтверждения;
-2. сохранить хеши ключа и кода;
-3. отправить письмо через SMTP/Gmail API/корпоративный relay;
-4. записать статус доставки в `invitation`;
-5. не включать ключ в логи, метрики, трассировки и тексты ошибок;
-6. использовать шаблон письма с HTTPS-ссылкой и сроком действия.
+## Отчёты и задачи
 
-Секреты SMTP/LLM/S3 хранятся только в серверном окружении, не в `VITE_*`.
+SQL-задачи хранятся в `promscan.reports` отдельной tasks-БД. Основная схема
+`database/sql/tasks/001_schema.sql` принимает статусы `open`, `in_progress`,
+`closed`. Additive SQL `database/sql/tasks/002_rejected_status.sql` вводит
+отдельный `rejected`: он терминален, требует назначенного исполнителя и
+непустой причины в `repair_comment`; `completed_at` у rejected остаётся `NULL`.
+Без 002 база не может сохранять `rejected`.
 
-## 5. Переменные окружения
+### `/api/reports` legacy-контракт
 
-**Frontend:** шаблон [`.env.example`](../.env.example). База задаётся без `/api`:
-методы клиента добавляют этот префикс сами.
+`POST /api/reports` принимает JSON `ReportCreate`:
 
-```text
-VITE_API_BASE_URL=http://127.0.0.1:8000
-VITE_USE_MOCK_API=true
+```json
+{
+  "equipment_id": "pump-402",
+  "repair_status": "pending",
+  "dispatcher_notes": "Проверить корпус",
+  "defects": [],
+  "expert_opinion": {
+    "criticality": "low",
+    "probable_cause": "",
+    "recommendations": []
+  },
+  "photo_url": "/static/uploads/original.jpg",
+  "final_photo_url": null
+}
 ```
 
-Только точная строка `false` включает HTTP-запросы в `src/lib/api.ts`;
-по умолчанию — `true`. После изменения нужен перезапуск Vite/новая сборка.
-`Defects` и `Scanner` уже используют `src/lib/api.ts`; флаг не переключает
-`Users` и вход — они остаются демо до реализации раздела 4.1.
-Все `VITE_*` доступны браузеру, секреты в них хранить нельзя.
+Legacy status mapping: `pending → open`, `in_progress → in_progress`,
+`completed → closed`, `rejected → rejected`. Создание проверяет существование
+оборудования и сохраняет содержимое акта в задаче. `GET /api/reports` принимает
+query `repair_status` и `equipment_id`; `PATCH /api/reports/{id}/status`
+принимает JSON с полями `status` (legacy enum) и опциональным
+`dispatcher_notes`. Новые переходы:
 
-**Будущий сервер:** ожидаются независимые `VISION_MODE=mock|real` и
-`LLM_MODE=mock|real`, настройки `CORROSION_MODEL_PATH`, `CRACK_MODEL_PATH`,
-`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`. Значения, пути к весам и настройки
-хранилищ определяются отдельным серверным проектом; готового серверного `.env`
-в этом репозитории нет. Не копировать ключи или пути сервера в frontend.
+| Из статуса | В `in_progress` | В `completed` | В `rejected` |
+|---|---:|---:|---:|
+| `pending` | да | да | да |
+| `in_progress` | нет | да | да |
+| `completed` | нет | нет | нет |
+| `rejected` | нет | нет | нет |
 
-## 6. Что заменяется при интеграции
+Повторная установка текущего статуса не запускает переход повторно; если в
+таком запросе передан новый `dispatcher_notes`, сервис обновляет комментарий.
+В legacy-контракте сервис
+подставляет технический снимок исполнителя `Бригада ТОиР`, если переход из
+`pending` требует исполнителя, а его нет. При переходе в `rejected` причина
+берётся из `dispatcher_notes`; если поле пусто, сохраняется стандартная причина
+для legacy-перехода. SQL 002 обязателен, иначе база не допустит этот статус.
+Недопустимые переходы возвращают `409`, отсутствующий report — `404`. Ответ
+`ReportResponse` также содержит `equipment_name`, `created_at`, `updated_at`, а
+кроме того legacy fields `repair_status`, `dispatcher_notes`, `defects_count`,
+`defects`, `expert_opinion`, `photo_url`, `final_photo_url`, `started_at` и
+`completed_at`; это не `Report` из frontend-контракта.
 
-- `src/lib/inspection.ts` — мок-оборудование, мок-детекции, типы.
-- `src/lib/api.ts` — уже содержит HTTP-ветки `/api/equipment`, `/api/inspect`,
-  `/api/reports` и переключатель `VITE_USE_MOCK_API`. Сетевые вызовы только
-  здесь; runtime-валидация, аутентификация и cookie/CSRF пока не реализованы.
-- `src/pages/Scanner.tsx` — первая попытка через 500 мс, затем live-цикл
-  каждые 1800 мс с пропуском тика при активном запросе. При
-  `VITE_USE_MOCK_API=false` отправляет видеокадр JPEG или исходный загруженный
-  файл в `POST /api/inspect`. Заменить фиксированный ID агрегата на выбранный
-  из `fetchEquipment()`; характеристики узла приходят в
-  `InspectionResult.equipment.nodes[].specs`, отдельного блока «Паспорт
-  оборудования» в интерфейсе нет. Fallback на mock при HTTP-ошибках сейчас
-  нет. WebSocket не входит в контракт.
-- `src/pages/Scanner.tsx` → `LiveReport` уже читает режимы и длительность из
-  `analysis.meta`, но некоторые тексты страницы и `Layout` всё ещё статичны.
-  Обновить их с учётом реальной передачи снимков и серверного mock/real.
-- `src/pages/Defects.tsx` — уже использует `fetchReports()` + `fetchEquipment()`,
-  состояния loading/error/empty и маппинг `Report[]` в таблицу. Показывает
-  `assignee.full_name` или «Не назначен», статусы «Открыт / В работе /
-  Выполнено», ссылку на `/task/{id}` и обновляется по кнопке, `window.focus`
-  и подписке на mock-события. В real-режиме подписка — no-op: актуальные
-  данные приходят из `GET /api/reports`; при необходимости добавить polling
-  или WebSocket отдельным согласованным протоколом.
-- `src/pages/Scanner.tsx` → `ReportCreateForm` уже вызывает
-  `src/lib/api.ts` → `createReport()` с `assignee_id` и `status: "open"`.
-  При подключении backend проверить `201`, `assignee`, `photo_url`, повторное
-  чтение списка и согласованность ID в `payload`.
-- `src/pages/Task.tsx` — мобильная карточка задачи. Читает
-  `GET /api/reports/{id}` через `fetchReportById()` и меняет статус через
-  `updateReportStatus()`. В real-режиме действия должны выполняться от имени
-  вошедшего сотрудника; без сессии экран остаётся демо-ссылкой.
-- `src/lib/employees.ts` — демо-справочник `MOCK_EMPLOYEES` и `EmployeeRef`.
-  В нём хранятся соль и PBKDF2-хеш ключа, а также статус приглашения. В
-  real-режиме его заменяет серверный справочник `GET/POST /api/users`, а в
-  `Report` по-прежнему хранится только безопасный снимок `assignee`.
-- `src/lib/api.ts` в mock-режиме хранит задачи в `localStorage`
-  (`promscan:mock-reports:v2`) и рассылает событие об изменении. Это только
-  демо: после подключения backend источником истины становится сервер,
-  а localStorage-хранилище и подписка `subscribeToReportChanges()` не нужны.
-- `src/context/RoleContext.tsx`, `src/lib/auth.ts`,
-  `src/pages/Users.tsx` — демо-роль и сотрудники в памяти заменяются
-  контрактом из раздела 4.1. Сейчас `src/lib/access.ts` проверяет ключ
-  локально, `src/lib/session.ts` хранит сессию в `sessionStorage`, а
-  `src/lib/email.ts` складывает письмо в mock-outbox. Все три места —
-  точки замены, а не готовая авторизация.
-- `src/lib/accessKeys.ts` — генерация и проверка ключей на клиенте.
-  В production генерация и хеширование выполняются на сервере; ключ уходит
-  сотруднику только письмом, а на `POST /api/auth/login` клиент отправляет
-  введённый пользователем ключ.
-- `src/lib/email.ts` → `sendAccessKeyEmail()` — заготовка письма. Заменить на
-  серверную отправку внутри `POST /api/users` и
-  `POST /api/users/{id}/reissue-key`; SMTP/Gmail API и код подтверждения
-  остаются на сервере.
+### `/front/api/reports` совместимый контракт
 
-## 7. За пределами текущего API
+`POST /front/api/reports` принимает multipart `equipment_id`, `inspection_id`,
+`payload` (JSON-строка объекта), опциональные `status`, `comment`,
+`assignee_id`, `photo`. Новая запись вставляется в `open`; начальный
+`in_progress`/`closed` применяется дальнейшими SQL-переходами. Ответ включает
+`id`, `equipment_id`, `inspection_id`, `status`, `comment`, `photo_url`,
+`result`, `assignee`, timestamps и `repair_comment`.
 
-- `/api/users`, вход/выход и серверный RBAC — отдельная будущая задача.
-  Она нужна для того, чтобы PATCH проверял исполнителя по сессии, а не доверял
-  браузеру. Целевые схемы и endpoint'ы уже описаны в разделе 4.1, но не
-  реализованы.
-- Данные смены, справочник сотрудников для выбора исполнителя и
-  WebSocket-протокол не определены; не придумывать endpoint'ы при подключении
-  UI без обновления контракта. Для `assignee_id` нужен согласованный источник
-  сотрудников; до этого используется `src/lib/employees.ts`.
-- Модель/LLM (YOLO-конвертер, Gemini/OpenAI-совместимый вызов с rule-based
-  fallback) и постоянное SQLite-хранилище уже реализованы в TOiR backend
-  (`app/services/`), но обслуживают его собственный контракт, а не этот.
-  S3/MinIO и серверные логи остаются за рамками текущего проекта.
+`GET /front/api/reports` фильтрует по `status` из `open`, `in_progress`,
+`closed`, `rejected`; `GET /front/api/reports/{id}` читает одну задачу.
+`PATCH /front/api/reports/{id}/status` принимает JSON
+`{"status":"in_progress"}` или `{"status":"closed","comment":"..."}`.
+Новые переходы ограничены `open → in_progress → closed`; повтор текущего
+статуса идемпотентен и возвращает текущую запись без перехода. Поэтому `open`
+принимается только для уже открытой задачи, а `rejected` через POST или как
+новый PATCH-переход установить нельзя (повтор уже установленного `rejected`
+остаётся идемпотентным). Неподдерживаемый статус даёт `422`, недопустимый
+переход или неназначенная задача — `409`, отсутствующий report — `404`.
+
+Задачи хранят снимок `assignee_id` и `assignee_full_name`. `assignee_id` должен
+быть UUID; сервис запрашивает активного сотрудника через employees pool, но если
+запись не найдена, сейчас сохраняет UUID как `assignee_full_name`, а не
+отклоняет назначение. Между физическими БД нет foreign key.
+
+## PostgreSQL и миграции
+
+Runtime поддерживает четыре DSN:
+
+| Переменная | Данные |
+|---|---|
+| `DATABASE_URL` | каталог оборудования, включая webapp projection |
+| `DATABASE_TASKS_URL` | акты/задачи |
+| `DATABASE_EMPLOYEES_URL` | сотрудники |
+| `DATABASE_CREDENTIALS_URL` | хеши access keys, sessions и login audit |
+
+Рекомендуется настроить четыре отдельные PostgreSQL database, каждая со
+схемой `promscan`. Каталожный пул использует `DATABASE_URL`, а при его
+отсутствии может использовать `DATABASE_CATALOG_URL`. Пулы задач, сотрудников
+и credentials подставляют `DATABASE_URL`, если соответствующие DSN не заданы;
+при таком fallback физической изоляции нет. `/front/api/reports` при этом требует явно заданный
+`DATABASE_TASKS_URL`, отличный от каталожной БД, а добавление исполнителя
+требует также отдельный `DATABASE_EMPLOYEES_URL`. Переменные и setup-команды
+приведены в [`DEPLOY.md`](DEPLOY.md).
+
+Структурные SQL-файлы не исполняются автоматически приложением при старте.
+`database/migrations/005_webapp_catalog.sql` добавляет таблицу совместимости
+каталога в database `DATABASE_URL`. SQL создания отдельных баз и additive
+миграций сотрудников, задач и credentials следует применять отдельно и в
+порядке, указанном в deployment-инструкции. В этом обновлении документации не
+проводились миграции на рабочей или production PostgreSQL и не заявляется
+production verification.
+
+## Клиентские ограничения и отсутствующие endpoints
+
+- Android Retrofit объявляет вызовы `/api/auth/login`, `/api/auth/me`,
+  `/api/auth/logout`, а для оборудования/осмотра/задач — `/front/api/*`.
+- Android использует только быстрый `POST /front/api/inspect`; detailed
+  analysis endpoint и `/front/api/inspect/detailed` отсутствуют.
+- React-приложение в `src/` остаётся demo-only; HTTP-клиент не найден, поэтому
+  изменение `VITE_USE_MOCK_API`/`VITE_API_BASE_URL` не подключает его к backend.
+- Нет `/api/users/{id}/reissue-key`, `/api/users/{id}/invite`,
+  `/api/auth/confirm-email`, WebSocket endpoint или detailed-analysis endpoint.
+- `/front/api/mail/access-key` отправляет письмо сразу; это не очередь и не
+  provisioning сотрудника. SMTP limit задаётся `SMTP_MAX_PER_HOUR` (default
+  30) и действует в памяти процесса.

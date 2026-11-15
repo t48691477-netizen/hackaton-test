@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS promscan.employees (
                             CHECK (role IN ('director', 'admin', 'dispatcher', 'engineer')),
     is_active           boolean NOT NULL DEFAULT true,
     invitation_status   text NOT NULL DEFAULT 'not_sent'
-                            CHECK (invitation_status IN ('not_sent', 'queued', 'sent', 'failed')),
+                            CHECK (invitation_status IN ('not_sent', 'sent', 'failed')),
     invitation_provider text
                             CHECK (invitation_provider IS NULL OR
                                    invitation_provider IN ('smtp', 'gmail', 'mock')),
@@ -33,9 +33,13 @@ CREATE TABLE IF NOT EXISTS promscan.employees (
             AND invitation_provider IS NULL
             AND invitation_sent_at IS NULL)
         OR
-        (invitation_status <> 'not_sent'
+        (invitation_status = 'failed'
             AND invitation_provider IS NOT NULL
-            AND ((invitation_status = 'sent') = (invitation_sent_at IS NOT NULL)))
+            AND invitation_sent_at IS NULL)
+        OR
+        (invitation_status = 'sent'
+            AND invitation_provider IS NOT NULL
+            AND invitation_sent_at IS NOT NULL)
     )
 );
 

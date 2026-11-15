@@ -12,7 +12,6 @@ import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 import ru.cyber102.arinspector.data.model.AccountDto
-import ru.cyber102.arinspector.data.model.DetailedInspectResponse
 import ru.cyber102.arinspector.data.model.EquipmentDto
 import ru.cyber102.arinspector.data.model.LoginRequest
 import ru.cyber102.arinspector.data.model.LoginResponse
@@ -45,14 +44,6 @@ interface PromScanApi {
         @Part file: MultipartBody.Part,
         @Part equipmentId: MultipartBody.Part
     ): Response<ResponseBody>
-
-    @Multipart
-    @POST("front/api/inspect/detailed")
-    suspend fun inspectDetailed(
-        @Part file: MultipartBody.Part,
-        @Part inspection: MultipartBody.Part,
-        @Part conditionParameters: MultipartBody.Part
-    ): Response<DetailedInspectResponse>
 
     @Multipart
     @POST("front/api/reports")

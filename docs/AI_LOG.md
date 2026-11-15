@@ -4,6 +4,88 @@
 
 ---
 
+### [2026-11-15] standard/gpt-6-sol (OpenCode) · PostgreSQL и employee API
+- Статус: backend storage, employee provisioning/rotation/deactivation API и миграции завершены; изменения подготовлены в незакоммиченной ветке.
+- Изменения: добавлены защищённые создание сотрудника с SMTP-приглашением и ротация ключа, explicit-salt Argon2id, отзыв сессий trigger-ом, компенсация ошибок, миграция invitation states `not_sent/sent/failed`, grants, тесты и обновлённые API/deploy/database инструкции.
+- Проверка: `python -m pytest -q` — `106 passed, 32 skipped`; `python -m compileall -q app tests test_api.py test_auth.py test_reports.py test_detect.py run.py` и `git diff --check` — OK. Skips — PostgreSQL integration без отдельных тестовых DSN.
+- Риски/заметки: live PostgreSQL зависит от отсутствующих `psycopg` и отдельных test DSN. SMTP настраивается серверными переменными. Frontend/mobile и чужие изменения не редактировались.
+
+### [2026-11-15] gpt-6-astra (OpenCode) · employee/auth и bearer-контракт фронтенда
+- Статус: в работе; продолжаю защищённое создание и ротацию ключей сотрудников, `/front/api/*` и сквозной lifecycle веб-сессии.
+- Изменения: проверены обе рабочие копии, текущие PostgreSQL-сервисы, mailer, роутеры и frontend-клиенты; начинаю точечные правки поверх смешанного состояния.
+- Проверка: до реализации выполнены чтение onboarding/журнала, `git status` и сверка веток; полные проверки будут после завершения.
+- Риски/заметки: backend employee и credentials используют разные транзакции; plaintext ключ допустим только внутри выдачи и SMTP-доставки, не в API, логах, outbox или БД.
+
+### [2026-11-15] gpt-6-astra (OpenCode) · создание и ротация employee access keys
+- Статус: в работе; беру завершение защищённых API создания сотрудника и ротации ключа доступа, включая письмо, компенсационную очистку, миграции, тесты и документацию.
+- Изменения: после обязательного onboarding дочитываю текущие auth/DB/mailer контракты и готовлю точечные изменения поверх уже существующих незакоммиченных работ.
+- Проверка: проверены `docs/AGENT_ONBOARDING.md`, последние записи журнала, статус рабочей копии и текущие employee/auth файлы; полные проверки будут после реализации.
+- Риски/заметки: базы сотрудников и credentials используют отдельные транзакции; plaintext access key допустим только внутри отправки письма и не должен попадать в ответ, лог или текст ошибки. PostgreSQL integration требует отдельных тестовых DSN.
+
+### [2026-11-15] gpt-6-astra (OpenCode) · завершение PostgreSQL employee/auth и real-mode web client
+- Статус: в работе; продолжаю реализацию создания и ротации ключей, защиты `/front/api/*` и сквозного login/logout для `newfront`.
+- Изменения: после проверки текущих незакоммиченных изменений и обязательных onboarding-файлов дочитываю сервисы, SQL-схемы и клиентские контракты перед точечным патчем.
+- Проверка: проверены `git status` обеих веток, `docs/AGENT_ONBOARDING.md` и последние записи `docs/AI_LOG.md`; полные проверки будут после реализации.
+- Риски/заметки: mobile, detector и прочие UI-изменения остаются вне целевых коммитов; живые PostgreSQL-тесты зависят от отдельных тестовых DSN.
+
+### [2026-11-15] gpt-6-astra (OpenCode) · завершение provisioning и rotation employee API
+- Статус: в работе; продолжаю защищённое управление сотрудниками после реализации списка и деактивации. Изменения не закоммичены.
+- Изменения: впереди создание сотрудника с отправкой access key, ротация ключа, компенсационная очистка при ошибках, миграция invitation states, grants, тесты и документация.
+- Проверка: прочитаны onboarding, последние записи журнала, employee/auth/mailer сервисы и PostgreSQL-схемы. Полные проверки будут после реализации.
+- Риски/заметки: нужны отдельные `DATABASE_TEST_EMPLOYEES_URL` и `DATABASE_TEST_CREDENTIALS_URL`; plaintext access key существует только во время отправки письма и не должен попадать в ответы, логи или ошибки.
+
+### [2026-11-15] gpt-6-astra (OpenCode) · завершение employee-management API
+- Статус: готово; защищённые API списка и деактивации сотрудников реализованы с раздельными PostgreSQL pools. Изменения не закоммичены.
+- Изменения: добавлены `EmployeeService`, публичная схема сотрудника и `/api/users`; деактивация сохраняет строку сотрудника как `is_active = false`, затем удаляет credential с каскадом сессий и кодов подтверждения. `/api/auth/me` и вход учитывают неактивный профиль; обновлены API-контракт и deployment grants.
+- Проверка: targeted unit/route/PostgreSQL tests — `16 passed, 4 skipped`; `py_compile` для изменённых auth/users/employee файлов — OK. Полный набор и live PostgreSQL зависят от окружения; тестовые DSN не заданы.
+- Риски/заметки: базы employees и credentials не поддерживают общую транзакцию, поэтому ошибка удаления credential после commit сотрудника возвращает `503`, а сотрудник остаётся неактивным. Plaintext access key не попадает в API-ответы или логи.
+
+### [2026-11-15] gpt-6-astra (OpenCode) ? employee/auth API integration
+- ??????: ????????? ?????????? PostgreSQL-??????????? ???????????, bearer-?????? ? frontend API; ????????? mobile/detector-????????? ???????? ??? ?????????????.
+- ?????????: ????????? onboarding, ????????? ????? ????? ? ??????? ??????? `EmployeeService`, `AuthService`, `/api/users` ? frontend API/session-??????.
+- ????????: ????? ???????? ????????? `git status`, onboarding ? ????????? ?????? `docs/AI_LOG.md`; ?????? ???????? ????? ????? ?????????? ??????????.
+- ?????/???????: PostgreSQL integration tests ??-???????? ??????? ????????? `DATABASE_TEST_*_URL`; push frontend ????????? ??????? ????????? `newfront` ? `origin/newfront`.
+
+
+### [2026-11-15] standard/gpt-6-sol (OpenCode) · защищённое управление сотрудниками
+- Статус: в работе; реализую backend API для списка, создания, ротации доступа и деактивации сотрудников. Изменения не закоммичены.
+- Изменения: после проверки существующих auth/DB/mailer схем добавлю отдельный users service/router с раздельными pools сотрудников и credentials; frontend checkout не меняется.
+- Проверка: перед реализацией прочитаны `docs/AGENT_ONBOARDING.md`, последние записи этого журнала, auth-контракт и PostgreSQL-схемы. Полные проверки будут после внесения кода.
+- Риски/заметки: PostgreSQL интеграция требует отдельных `DATABASE_TEST_EMPLOYEES_URL` и `DATABASE_TEST_CREDENTIALS_URL`; plaintext access key не должен попадать ни в API-ответы, ни в логи.
+
+### [2026-11-15] standard/gpt-6-sol (OpenCode) · Закрытие PostgreSQL-портирования и регрессии
+- Статус: локальная реализация и регрессионные проверки завершены; реальные PostgreSQL миграции/integration и APK остаются заблокированы внешними prerequisites. Изменения не закоммичены.
+- Изменения: исправлен выбор legacy/provisioned аккаунта при входе, разделены SQL rate-limit счётчики identifier/source, memory fallback чистится и ограничен по размеру; повтор `rejected` стал идемпотентным, `run.py` запускает документированный FastAPI, повреждённые строки `components_json` дают пустой список компонентов. Добавлены auth, catalog и `/front/api` regressions. Проверены аудиты catalog и API/docs; документация обновлена.
+- Проверка: `python -m pytest -q` — 73 passed, 30 skipped; `python -m compileall -q app tests test_api.py test_auth.py test_reports.py test_detect.py run.py` — OK; `git diff --check` — OK. Skips — PostgreSQL integration без тестовых DSN.
+- Риски/заметки: PostgreSQL-схемы/миграции и сквозной API не проверены на сервере; `/front/api/*` остаётся без Bearer-аутентификации и не должен публично выставляться без дополнительного контроля. Отдельная загрузка модели в `/front/api/inspect` и best-effort счётчик инспекций оставлены как известные риски. Нет `mobile/debug.keystore`; APK не собран. Коммит не создавался.
+
+### [2026-11-15] standard/gpt-6-sol (OpenCode) · PostgreSQL storage/auth regression pass
+- Статус: код и offline-регрессии обновлены; полный локальный набор проходит. Live PostgreSQL-интеграция остаётся непроверенной без отдельной тестовой БД/DSN.
+- Изменения: login rate-limit reservation теперь несёт ID конкретной записи audit; успешный вход меняет только свою reservation. Добавлена проверка совпадения reservation с ключом/источником. Storage поддерживает чтение нормализованного `promscan.equipment` вместе с overlay `promscan.webapp_equipment`, включая паспортные `equipment_nodes`; добавлены проверки для storage/API, pool errors, rejected notes и final photo. `test_detect.py` приведён к единой модели `defects_yolo`.
+- Проверка: `python -m pytest -q` — 61 passed, 30 skipped; `python -m compileall -q app tests test_api.py test_auth.py test_reports.py test_detect.py` — OK; `git diff --check` — OK. PostgreSQL skips связаны с отсутствующими `DATABASE_TEST_*_URL`.
+- Риски/заметки: фактическая схема `equipment_nodes` из `database/sql/001_schema.sql` не имеет `description`, поэтому API `ComponentSchema.type` проецируется из `name`. Отдельно заказаны три read-only/изолированных агентских аудита; проверить их findings перед завершением. Коммит не создавался.
+
+### [2026-11-15] standard/gpt-6-sol (OpenCode) · PostgreSQL API-тесты отчётов
+- Статус: корневые контрактные тесты переведены с SQLite на изолированные PostgreSQL базы; тесты выполнены, но API-интеграция пропущена без тестовых DSN.
+- Изменения: `test_reports.py` создаёт временные базы из `DATABASE_TEST_TASKS_URL` и `DATABASE_TEST_CATALOG_URL`, применяет схемы, защищается от совпадения тестового и production DSN, сохраняет проверки `/api/reports` и отдельно проверяет легаси-переход `pending → completed`. Добавлена эта запись в журнал.
+- Проверка: `python -m pytest test_reports.py tests/test_pg_reports.py` — 3 passed, 27 skipped; `python -m compileall -q test_reports.py tests/test_pg_reports.py` — OK. Оба `DATABASE_TEST_*_URL` не заданы, поэтому PostgreSQL API-тесты не запускались.
+- Риски/заметки: для полной интеграционной проверки нужны отдельные тестовые DSN с правом `CREATEDB`; production DSN использовать нельзя. Изменения не закоммичены.
+
+### [2026-11-15] glm-5.3 (OpenCode, сабагент) · Тесты PostgreSQL-хранилища задач
+- Статус: готово; тесты написаны и компилируются. Интеграционные тесты намеренно не запускались — в окружении нет `psycopg` и `DATABASE_TEST_TASKS_URL`.
+- Изменения: добавлен `tests/test_pg_reports.py` — psycopg3-тесты поверх реальной схемы задач (`promscan.reports`), без правок приложения и других тестов.
+  - Helpers: создание/удаление временной БД из DSN (`psycopg.conninfo`), применение `database/sql/tasks/001_schema.sql` и `002_rejected_status.sql` (002 — если файл есть), разбор множества допустимых статусов.
+  - Integration (пропуск без DSN/psycopg): отчёт создаётся только в `open`; `open → in_progress` только с назначенным исполнителем; триггер проставляет `started_at`; `in_progress → closed`; `open → in_progress → rejected` с `repair_comment`; недопустимые переходы падают; список отчётов упорядочен `created_at DESC`.
+  - Unit (импорт `app.services.storage` с фиктивным `DATABASE_URL`): легаси `pending → open`, `completed → closed` через `LEGACY_STATUS_TO_DB` / `DB_STATUS_TO_LEGACY`, обратное отображение всех четырёх состояний БД в `RepairStatus`.
+- Проверка: `python -m compileall -q tests\test_pg_reports.py` — OK. Санити-скрипт подтвердил: прямой и обратный маппинг статусов согласованы, `001` допускает `open/in_progress/closed`, `002` добавляет `rejected`, легаси-значения в схеме не утекают. Реальный прогон pytest невозможен: нет `psycopg`, `pytest` и DSN (Python 3.14.3).
+- Риски/заметки: имя временной БД — `promscan_tasks_pytest_<8 hex>`; роли нужны права CREATEDB, для PostgreSQL < 13 используется обычный `DROP DATABASE`. Тесты отказов сами скипаются на `CheckViolation`, только если `002_rejected_status.sql` отсутствует; при наличии 002 нарушение контракта считается настоящей регрессией. Для полного прогона: установить `psycopg[binary]` + `pytest` и задать `DATABASE_TEST_TASKS_URL` на тестовую БД (не боевую).
+
+### [2026-11-15] standard/gpt-6-sol (OpenCode) · PostgreSQL и единый анализ
+- Статус: в работе; серверное SQLite/JSON-хранение переводится на существующие PostgreSQL-схемы, дополнительный анализ удаляется, остаётся `weights/defects_yolo.onnx`.
+- Изменения: впереди изменения FastAPI-хранилищ, конфигурации PostgreSQL, веб/Android-контрактов и очистка устаревшего второго анализа.
+- Проверка: ещё не запускалась; в окружении пока не найдены `psql`, Docker, `psycopg` и `pytest`.
+- Риски/заметки: веб-версия и Android — два клиента одного продукта; сохранять оба API-контракта. Схема задач ограничивает статусы `open/in_progress/closed`, а основной API использует `pending/in_progress/completed/rejected`; совместимость нужно обеспечить на границе хранилища.
+
 ### [2026-11-15] standard/gpt-6-sol (OpenCode) · PostgreSQL-паспорта оборудования
 - Статус: код и инструкции подготовлены; production импорт не выполнен, потому что исходных четырёх PDF и настроенной PostgreSQL в окружении нет.
 - Изменения: `backend/db.py` читает каталог и PDF из PostgreSQL; `backend/server.py` добавляет список оборудования и read-only routes документов; `backend/import_passports.py` валидирует точные имена/маппинг четырёх AMS PDF и импортирует содержимое с SHA-256; миграции `003`/`004` создают metadata/bytea и подтверждённый каталог; README, API и migrations README описывают импорт, проверку и разделение паспортных компонентов от AR nodes. Поверхностно разобраны `origin/feat/android-backend` (`bd90c69`) и `origin/backend-test` (`78b246f`), QR-поток и несовместимости контрактов записаны в README.
@@ -104,3 +186,10 @@
 - Статус: на связи
 - Зона: продукт, дизайн, решения
 - Первое предложение: прислать фото бумажного дизайна — перенесём в HUD-тему.
+# Журнал работы ИИ
+
+### [2026-11-15] gpt-6-astra (OpenCode) · employee management provisioning
+- Статус: Взята задача завершить создание сотрудников с приглашением по email, ротацию ключей доступа, миграции, grants, тесты и документацию; реализация продолжается.
+- Изменения: Запись добавлена перед началом работы; рабочее дерево и существующие изменения сохранены.
+- Проверка: Прочитаны `docs/AGENT_ONBOARDING.md`, последние записи журнала и текущие employee/auth файлы.
+- Риски/заметки: Live PostgreSQL проверки требуют `psycopg` и отдельных `DATABASE_TEST_EMPLOYEES_URL`/`DATABASE_TEST_CREDENTIALS_URL`; изменения должны остаться незакоммиченными.

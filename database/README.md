@@ -12,6 +12,7 @@
 - `sql/004_seed_measurement_catalog.sql` — каталог каналов, метаданные двух demo-источников и пороги из описаний. Синтетические строки показаний не загружаются.
 - `sql/005_measurement_views.sql` — представления для будущих API-запросов: статус партий, измерения по оборудованию и последнее значение по каналу.
 - `sql/employees/001_schema.sql` — сотрудники и последнее состояние приглашения; база `promscan_employees`.
+- `sql/employees/002_invitation_states.sql` — убирает устаревшее состояние `queued`; база `promscan_employees`.
 - `sql/tasks/001_schema.sql` — акты осмотра/задачи и контролируемый жизненный цикл; база `promscan_tasks`.
 - `sql/credentials/001_schema.sql` — базовая схема хешей ключей доступа, серверных сессий и одноразовых кодов; база `promscan_credentials`.
 - `sql/credentials/002_key_salt_and_login_audit.sql` — additive-миграция ранее созданной credentials-схемы: добавляет nullable `key_salt`, журнал попыток входа и отзыв сессий при смене соли/хеша.
@@ -25,7 +26,7 @@ PDF-паспорта и Excel-файлы в Git не добавлены. В та
 
 | PostgreSQL database | SQL | Назначение |
 |---|---|---|
-| `promscan_employees` | `sql/employees/001_schema.sql` | Справочник сотрудников и текущее состояние приглашения |
+| `promscan_employees` | `sql/employees/001_schema.sql` + `002_invitation_states.sql` | Справочник сотрудников и текущее состояние приглашения |
 | `promscan_tasks` | `sql/tasks/001_schema.sql` | `Report` из API-контракта: осмотр, назначение и ремонт |
 | `promscan_credentials` | `sql/credentials/001_schema.sql` + `002_key_salt_and_login_audit.sql` + `003_enforce_key_salt.sql` | Argon2id-хеши access key, хеши сессий, коды подтверждения и аудит входа |
 
@@ -37,6 +38,7 @@ createdb promscan_tasks
 createdb promscan_credentials
 
 psql -v ON_ERROR_STOP=1 -d promscan_employees -f database/sql/employees/001_schema.sql
+psql -v ON_ERROR_STOP=1 -d promscan_employees -f database/sql/employees/002_invitation_states.sql
 psql -v ON_ERROR_STOP=1 -d promscan_tasks -f database/sql/tasks/001_schema.sql
 psql -v ON_ERROR_STOP=1 -d promscan_credentials -f database/sql/credentials/001_schema.sql
 psql -v ON_ERROR_STOP=1 -d promscan_credentials -f database/sql/credentials/002_key_salt_and_login_audit.sql
@@ -52,7 +54,7 @@ psql -v ON_ERROR_STOP=1 -d promscan_credentials -f database/sql/credentials/003_
 
 ### Границы хранения
 
-- `promscan.employees` хранит UUID, ФИО, нормализованный email, роль, активность, состояние приглашения и отметку подтверждения email. В таблице нет паролей или access key. UUID выдаёт PostgreSQL; демо-ID frontend вида `emp-003` не являются production-ID и при миграции заменяются UUID с сохранением таблицы соответствия вне этих схем.
+- `promscan.employees` хранит UUID, ФИО, нормализованный email, роль, активность, состояние приглашения (`not_sent`, `sent`, `failed`) и отметку подтверждения email. `queued` не применяется, поскольку API отправляет письмо синхронно. В таблице нет паролей или access key. UUID выдаёт PostgreSQL; демо-ID frontend вида `emp-003` не являются production-ID и при миграции заменяются UUID с сохранением таблицы соответствия вне этих схем.
 - `promscan.reports` хранит поля `Report` из `docs/API_CONTRACT.md`: `equipment_id`, `inspection_id`, JSONB-снимок результата, статус, снимок имени исполнителя и временные отметки ремонта. Новые задачи создаются только в `open`; trigger разрешает `open → in_progress → closed`, требует назначенного сотрудника для начала и сам ставит время переходов.
 - `promscan.access_key_credentials.key_salt` хранит 16 байт соли в нижнем hex-виде (32 символа), как требует текущий API-контракт; `key_hash` — полная PHC-строка Argon2id с параметрами и закодированной солью. Backend должен сгенерировать `key_salt`, использовать его при вычислении Argon2id, проверить согласованность соли с PHC-хешем и не сохранять открытый ключ. `auth_sessions.session_token_hash` хранит SHA-256-хеш случайного высокоэнтропийного токена, а не cookie/token в открытом виде. При изменении `key_hash` trigger автоматически отзывает все активные сессии и обновляет `key_created_at`. Короткий код подтверждения хранится как HMAC-SHA-256 (`bytea`) с отдельным секретом из secret manager, не как обычный быстрый или Argon2-хеш: это затрудняет офлайн-перебор короткого кода при утечке БД. Сравнение выполняйте в backend в constant time; коды должны быть одноразовыми, короткоживущими и защищёнными лимитом попыток.
 - `promscan.auth_login_attempts` хранит только HMAC-отпечатки нормализованного ключа и источника запроса, результат и время. Сам ключ и IP-адрес не сохраняются. Backend использует fingerprints для rate limiting/audit; HMAC-секреты должны быть отдельными и храниться вне БД. Настройте срок хранения и периодическую очистку записей.
@@ -79,9 +81,9 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 VITE_USE_MOCK_API=false
 ```
 
-После изменения переменных перезапустите Vite. `VITE_USE_MOCK_API=false` переключает `equipment`, `inspect` и `reports` на backend; `Users` и вход остаются mock до реализации `/api/users` и `/api/auth/*`.
+После изменения переменных перезапустите Vite. `VITE_USE_MOCK_API=false` переключает `equipment`, `inspect` и `reports` на backend; `Users` и вход остаются mock до отдельной frontend-интеграции с `/api/users` и `/api/auth/*`.
 
-При реализации API сопоставьте `GET/POST /api/users` с `employees`, `POST /api/auth/login` с проверкой PHC-хеша и выдачей сессии, `GET/PATCH /api/reports` с `reports`. При создании задачи сначала проверьте сотрудника, затем сохраните `assignee_id` и `full_name` snapshot. Возвращая `AuthAccount`, соберите employee-поля и состояние приглашения из `promscan_employees`; никогда не возвращайте `key_hash`, `key_salt`, fingerprints, `code_hash` или `session_token_hash`. Реализация backend должна также выполнять rate limiting входа, валидировать роли/RBAC и отзывать сессии при перевыпуске ключа.
+`GET/POST /api/users` читает и создаёт сотрудников; `POST /api/users/{employee_id}/access` вращает access key; `DELETE` деактивирует сотрудника. Никогда не возвращайте `key_hash`, `key_salt`, fingerprints, `code_hash`, `session_token_hash` или plaintext ключи. Создание и ротация отправляют ключ только через серверный SMTP; trigger credentials отзывает активные сессии при смене ключа.
 
 Рекомендуется создать отдельную роль PostgreSQL для каждой базы и выдать backend только необходимые права на соответствующую DSN. Не давайте frontend-проекту ни одной DSN и не используйте одну суперпользовательскую роль в приложении.
 

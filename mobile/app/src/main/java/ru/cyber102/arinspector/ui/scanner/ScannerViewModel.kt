@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.cyber102.arinspector.data.local.SettingsStore
-import ru.cyber102.arinspector.data.model.DetailedInspectResponse
 import ru.cyber102.arinspector.data.model.EquipmentDto
 import ru.cyber102.arinspector.data.model.InspectResponse
 import ru.cyber102.arinspector.data.repository.ApiResult
@@ -28,11 +27,7 @@ data class ScannerUiState(
     val frameHeight: Int = 0,
     val latestInspection: InspectResponse? = null,
     val latestRawJson: String? = null,
-    val latestConditionParamsJson: String? = null,
     val lastFrameJpeg: ByteArray? = null,
-    val isDetailedLoading: Boolean = false,
-    val detailedResult: DetailedInspectResponse? = null,
-    val showDetailedSheet: Boolean = false,
     val isCreatingReport: Boolean = false,
     val showManualIdDialog: Boolean = false,
     val equipmentOptions: List<EquipmentDto> = emptyList(),
@@ -106,9 +101,7 @@ class ScannerViewModel(
                             isAnalyzing = false,
                             latestInspection = null,
                             latestRawJson = null,
-                            latestConditionParamsJson = null,
-                            lastFrameJpeg = null,
-                            detailedResult = null
+                            lastFrameJpeg = null
                         )
                     }
                 }
@@ -132,10 +125,7 @@ class ScannerViewModel(
                 isAnalyzing = false,
                 latestInspection = null,
                 latestRawJson = null,
-                latestConditionParamsJson = null,
-                lastFrameJpeg = null,
-                detailedResult = null,
-                showDetailedSheet = false
+                lastFrameJpeg = null
             )
         }
         lastQrValue = null
@@ -203,8 +193,7 @@ class ScannerViewModel(
                             it.copy(
                                 isInspectInFlight = false,
                                 latestInspection = result.data.parsed,
-                                latestRawJson = result.data.rawJson,
-                                latestConditionParamsJson = result.data.conditionParametersJson
+                                latestRawJson = result.data.rawJson
                             )
                         }
                     }
@@ -222,44 +211,6 @@ class ScannerViewModel(
                 inspectInFlightFlag.set(false)
             }
         }
-    }
-
-    fun requestDetailedAnalysis(noFrameMessage: String) {
-        val state = _uiState.value
-        val jpeg = state.lastFrameJpeg
-        val rawJson = state.latestRawJson
-        val condJson = state.latestConditionParamsJson
-        if (jpeg == null || rawJson.isNullOrBlank() || condJson.isNullOrBlank()) {
-            _uiState.update { it.copy(snackbarMessage = noFrameMessage) }
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isDetailedLoading = true) }
-            when (val result = repository.inspectDetailed(jpeg, rawJson, condJson)) {
-                is ApiResult.Success -> {
-                    _uiState.update {
-                        it.copy(
-                            isDetailedLoading = false,
-                            detailedResult = result.data,
-                            showDetailedSheet = true
-                        )
-                    }
-                }
-                is ApiResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isDetailedLoading = false,
-                            snackbarMessage = result.message
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    fun dismissDetailedSheet() {
-        _uiState.update { it.copy(showDetailedSheet = false) }
     }
 
     fun setShowManualIdDialog(show: Boolean) {
