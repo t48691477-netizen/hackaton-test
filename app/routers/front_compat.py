@@ -307,13 +307,13 @@ def inspect(file: UploadFile = File(...), equipment_id: str = Form(...)):
     uni = _unified()
     with _infer_lock:
         if uni is not None:
-            out += _run(uni, img, 0.35, None, set(), node_id)
+            out += _run(uni, img, 0.20, None, set(), node_id)
         if corr is not None:
-            out += _run(corr, img, 0.35, "corrosion", {"car"}, node_id)
+            out += _run(corr, img, 0.25, "corrosion", {"car"}, node_id)
         if weld is not None:
-            out += _run(weld, img, 0.35, "crack", {"Good Weld"}, node_id)
+            out += _run(weld, img, 0.25, "crack", {"Good Weld"}, node_id)
         if oil is not None:
-            out += _run(oil, img, 0.30, "oil", set(), node_id)
+            out += _run(oil, img, 0.25, "oil", set(), node_id)
     mx = lambda k: max([d["confidence"] for d in out if d["source_model"] == k], default=0.0)
     crit = max((d["severity"] for d in out), key=lambda v: _SEV_RANK[v], default="low")
     kinds = []
