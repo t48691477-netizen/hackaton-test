@@ -18,7 +18,7 @@ _missing_packages = {
 for _name, _subdir in (("app.services", "services"), ("app.routers", "routers")):
     if _missing_packages[_name]:
         _package = ModuleType(_name)
-        _package.__path__ = [str(Path(__file__).parent / "app" / _subdir)]
+        _package.__path__ = [str(Path(__file__).resolve().parent.parent / "app" / _subdir)]
         sys.modules[_name] = _package
 try:
     _config = importlib.import_module("app.config")
@@ -137,3 +137,28 @@ def test_role_permissions_follow_contract(client, monkeypatch):
     monkeypatch.setenv("TOIR_ROLE", "dispatcher")
     account = client.post("/api/auth/login", json={"access_key": ACCESS_KEY}).json()["account"]
     assert account["permissions"] == ["scan", "dispatch"]
+
+
+def test_default_system_keys_work_without_env_hash(tmp_path, monkeypatch):
+    monkeypatch.delenv("TOIR_ACCESS_KEY_HASH", raising=False)
+    monkeypatch.setattr(auth_router, "auth_service", AuthService(tmp_path / "default_auth.db"))
+    app = FastAPI()
+    app.include_router(auth_router.router)
+    unconfigured_client = TestClient(app)
+
+    # Server key from desktop
+    resp_server = unconfigured_client.post("/api/auth/login", json={"access_key": "8ZG9X5N7KX"})
+    assert resp_server.status_code == 200
+    assert resp_server.json()["account"]["role"] == "engineer"
+    assert "scan" in resp_server.json()["account"]["permissions"]
+
+    # Director key
+    resp_director = unconfigured_client.post("/api/auth/login", json={"access_key": "PSCDRT2345"})
+    assert resp_director.status_code == 200
+    assert resp_director.json()["account"]["role"] == "director"
+    assert resp_director.json()["account"]["permissions"] == ["scan", "dispatch", "users"]
+
+    # Invalid key gives 401, not 503
+    resp_invalid = unconfigured_client.post("/api/auth/login", json={"access_key": "C23456789D"})
+    assert resp_invalid.status_code == 401
+    assert resp_invalid.json()["detail"] == "Ключ не подошёл."

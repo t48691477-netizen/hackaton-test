@@ -197,7 +197,7 @@ class StorageService:
         with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM equipment WHERE id = ?", (equipment_id,))
+                cursor.execute("SELECT * FROM equipment WHERE id = ? OR serial_number = ?", (equipment_id, equipment_id))
                 row = cursor.fetchone()
                 if not row:
                     return None

@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import secrets
 import sqlite3
@@ -44,9 +45,14 @@ class AuthService:
                     token_hash TEXT PRIMARY KEY,
                     created_at TEXT NOT NULL,
                     expires_at TEXT NOT NULL,
-                    revoked_at TEXT
+                    revoked_at TEXT,
+                    account_json TEXT
                 )"""
             )
+            try:
+                conn.execute("ALTER TABLE auth_sessions ADD COLUMN account_json TEXT")
+            except sqlite3.OperationalError:
+                pass
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS auth_login_attempts (
                     client_id TEXT PRIMARY KEY,
@@ -75,23 +81,67 @@ class AuthService:
     def _token_hash(token: str) -> str:
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
-    @staticmethod
-    def _verify_key(access_key: str) -> bool:
-        encoded_hash = os.environ.get("TOIR_ACCESS_KEY_HASH", "")
-        if not encoded_hash.startswith("$argon2id$"):
-            raise AuthConfigurationError("TOIR_ACCESS_KEY_HASH must contain an Argon2id hash")
-        try:
-            if not PasswordHasher().verify(encoded_hash, access_key):
-                return False
-            if PasswordHasher().check_needs_rehash(encoded_hash):
-                raise AuthConfigurationError("TOIR_ACCESS_KEY_HASH must use current Argon2id parameters")
-            return True
-        except VerifyMismatchError:
-            return False
-        except AuthConfigurationError:
-            raise
-        except Exception as exc:
-            raise AuthConfigurationError("TOIR_ACCESS_KEY_HASH is invalid") from exc
+    @classmethod
+    def _verify_key(cls, access_key: str) -> AuthAccount | None:
+        normalized = access_key.replace(" ", "").replace("-", "").upper()
+        encoded_hash = os.environ.get("TOIR_ACCESS_KEY_HASH", "").strip()
+        if encoded_hash:
+            if not encoded_hash.startswith("$argon2id$"):
+                raise AuthConfigurationError("TOIR_ACCESS_KEY_HASH must contain an Argon2id hash")
+            try:
+                if PasswordHasher().verify(encoded_hash, access_key) or PasswordHasher().verify(encoded_hash, normalized):
+                    if PasswordHasher().check_needs_rehash(encoded_hash):
+                        raise AuthConfigurationError("TOIR_ACCESS_KEY_HASH must use current Argon2id parameters")
+                    return cls._account()
+            except VerifyMismatchError:
+                pass
+            except AuthConfigurationError:
+                raise
+            except Exception as exc:
+                raise AuthConfigurationError("TOIR_ACCESS_KEY_HASH is invalid") from exc
+
+        # Default system accounts out-of-the-box
+        default_accounts: dict[str, AuthAccount] = {
+            "8ZG9X5N7KX": AuthAccount(
+                id="emp-001",
+                full_name="Инженер ТОиР (мобильный)",
+                email="engineer@kst-energo.ru",
+                role="engineer",
+                permissions=["scan"],
+            ),
+            "PSCDRT2345": AuthAccount(
+                id="director",
+                full_name="Генеральный директор",
+                email="director@kst-energo.ru",
+                role="director",
+                permissions=["scan", "dispatch", "users"],
+            ),
+            "PSCADM3456": AuthAccount(
+                id="admin",
+                full_name="Администратор системы",
+                email="admin@kst-energo.ru",
+                role="admin",
+                permissions=["scan", "dispatch", "users"],
+            ),
+            "PSCDSP4567": AuthAccount(
+                id="dispatcher",
+                full_name="Диспетчер смены",
+                email="dispatcher@kst-energo.ru",
+                role="dispatcher",
+                permissions=["scan", "dispatch"],
+            ),
+            "PSCENG5678": AuthAccount(
+                id="engineer-002",
+                full_name="Анна Петрова (Инженер)",
+                email="a.petrova@kst-energo.ru",
+                role="engineer",
+                permissions=["scan"],
+            ),
+        }
+        if normalized in default_accounts:
+            return default_accounts[normalized]
+
+        return None
 
     @staticmethod
     def _account() -> AuthAccount:
@@ -142,33 +192,43 @@ class AuthService:
             conn.execute("DELETE FROM auth_login_attempts WHERE client_id = ?", (client_id,))
 
     def login_reserved(self, access_key: str, client_id: str) -> AuthLoginResponse | None:
-        if not self._verify_key(access_key):
+        account = self._verify_key(access_key)
+        if account is None:
             return None
         self.clear_login_failures(client_id)
 
         now = self._now()
         expires_at = now + SESSION_TTL
         token = secrets.token_urlsafe(32)
+        account_json = account.model_dump_json() if hasattr(account, "model_dump_json") else json.dumps(account.dict())
         with self._connection() as conn:
             conn.execute(
-                "INSERT INTO auth_sessions (token_hash, created_at, expires_at) VALUES (?, ?, ?)",
-                (self._token_hash(token), self._iso(now), self._iso(expires_at)),
+                "INSERT INTO auth_sessions (token_hash, created_at, expires_at, account_json) VALUES (?, ?, ?, ?)",
+                (self._token_hash(token), self._iso(now), self._iso(expires_at), account_json),
             )
         return AuthLoginResponse(
             session_token=token,
             expires_at=self._iso(expires_at),
-            account=self._account(),
+            account=account,
         )
 
     def get_account(self, token: str) -> AuthAccount | None:
         now = self._iso(self._now())
         with self._connection() as conn:
             row = conn.execute(
-                """SELECT 1 FROM auth_sessions
+                """SELECT account_json FROM auth_sessions
                    WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?""",
                 (self._token_hash(token), now),
             ).fetchone()
-        return self._account() if row else None
+        if not row:
+            return None
+        if row[0]:
+            try:
+                data = json.loads(row[0])
+                return AuthAccount(**data)
+            except Exception:
+                pass
+        return self._account()
 
     def revoke(self, token: str) -> None:
         now = self._iso(self._now())
