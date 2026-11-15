@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.services.detector import defect_detector
 from app.services import mailer
-from app.services.llm_expert import llm_expert_service
+from app.services.llm_expert import llm_expert_service, VISION_AUDIT_SYSTEM_PROMPT
 from app.services.storage import storage_service
 from app.services.telemetry_emulator import telemetry_service
 
@@ -363,6 +363,21 @@ def inspect(file: UploadFile = File(...), equipment_id: str = Form(...)):
     }
 
 
+def _image_b64(file: UploadFile, max_side: int = 1024) -> Optional[str]:
+    import base64
+    import io
+    try:
+        from PIL import Image
+        file.file.seek(0)
+        img = Image.open(file.file).convert("RGB")
+        img.thumbnail((max_side, max_side))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return None
+
+
 @router.post("/inspect/detailed")
 def inspect_detailed(file: UploadFile = File(...), inspection: str = Form(...), condition_parameters: str = Form("{}")):
     t0 = datetime.now()
@@ -380,18 +395,29 @@ def inspect_detailed(file: UploadFile = File(...), inspection: str = Form(...), 
     causes = [llm.get("probable_cause", "")] if llm.get("probable_cause") else []
     steps = llm.get("recommendation_steps", [])
     llm_name = None
-    if insp.get("defects"):
+    if settings.OLLAMA_MODEL:
         eq = insp.get("equipment") or {}
         payload = json.dumps({
             "equipment_name": eq.get("name") or eq.get("id") or "агрегат",
-            "defects_found": [
+            "yolo_defects_found": [
                 {"label": d.get("label"), "source": d.get("source_model"), "confidence": d.get("confidence"), "severity": d.get("severity")}
-                for d in insp["defects"]
+                for d in insp.get("defects", [])
             ],
-            "defects_count": len(insp["defects"]),
         }, ensure_ascii=False)
-        res = llm_expert_service._ollama_chat(f"ВХОДНЫЕ ДАННЫЕ:\n{payload}")
+        img_b64 = _image_b64(file)
+        res = llm_expert_service._ollama_chat(
+            f"Оборудование и найденные нейросетью дефекты:\n{payload}\nОсмотри фото и выполни визуальный аудит.",
+            images=[img_b64] if img_b64 else None,
+            system_prompt=VISION_AUDIT_SYSTEM_PROMPT if img_b64 else None,
+        )
         if res:
+            for vf in res.get("visual_findings") or []:
+                if isinstance(vf, dict) and vf.get("title"):
+                    sev = str(vf.get("severity", "low")).lower()
+                    findings.append({
+                        "title": str(vf["title"]), "description": str(vf.get("description", "")),
+                        "severity": sev if sev in _SEV_RANK else "low", "recommendation": str(vf.get("recommendation", "")),
+                    })
             cause = res.get("probable_cause")
             recs = res.get("recommendations") or []
             if isinstance(recs, str):

@@ -40,6 +40,32 @@ CHIEF_EXPERT_SYSTEM_PROMPT = """
 }
 """.strip()
 
+VISION_AUDIT_SYSTEM_PROMPT = """
+Ты — инженер-диагност промышленного оборудования (ТОиР). По фотографии выполни визуальный аудит и найди ТОЛЬКО то, что действительно видно на снимке. Не выдумывай дефекты.
+
+Проверяй по типам оборудования:
+- Электродвигатели: повреждение изоляции кабелей (трещины, оплавление, оголённые жилы), погнутые/сломанные рёбра охлаждения, побежалость краски (бурый/жёлтый/радужный цвет у подшипниковых щитов и клеммной коробки), отсутствие жёлто-зелёного провода заземления.
+- Арматура: течь через сальник штока, соли и белый налёт, повреждённый/отсутствующий маховик или подручный инструмент на штоке, ржавые подтёки от фланцев, вздутие краски на стыке фланцев, несоответствие индикатора положения.
+- Трансформаторы и КРУ: силикагель в сапуне розовый/белый (насыщен влагой), трещины/сколы/следы дуги на изоляторах, масляные подтёки на баке, коррозия или истончение заземляющей шины.
+- Конвейеры: разрывы и расслоение ленты, лысые пятна на роликах и отсутствие крышек, сход ленты, налипание и завалы материала.
+- Теплообменники и АВО: смятое оребрение, повреждённая или промокшая изоляция и кожух, солевые и биологические обрастания.
+- Компрессоры и пневмосистемы: трещины, грыжи и перетирание шлангов и вибровставок, загрязнённые рёбра радиаторов, ослабленные виброопоры.
+
+Определи criticality: "high" — риск аварии или травмы (оголённая жила, нет заземления, трещины, течь масла под напряжением); "medium" — устранить при ближайшем ППР; "low" — наблюдение.
+
+ФОРМАТ ОТВЕТА — строгий JSON без лишнего текста:
+{
+  "criticality": "low" | "medium" | "high",
+  "visual_findings": [
+    {"title": "Краткое название", "description": "Что видно и где", "severity": "low" | "medium" | "high", "recommendation": "Что делать"}
+  ],
+  "probable_cause": "Вероятная причина по найденному",
+  "recommendations": ["Шаг 1: ...", "Шаг 2: ..."]
+}
+Если дефектов не видно — visual_findings пустой список, criticality "low".
+""".strip()
+
+
 class TOIRExpertService:
     def __init__(self):
         self.system_prompt = CHIEF_EXPERT_SYSTEM_PROMPT
@@ -57,10 +83,13 @@ class TOIRExpertService:
             for d in defects
         ]
 
-    def _ollama_chat(self, user_content: str) -> Optional[Dict[str, Any]]:
+    def _ollama_chat(self, user_content: str, images: Optional[List[str]] = None, system_prompt: Optional[str] = None) -> Optional[Dict[str, Any]]:
         model = settings.OLLAMA_MODEL or os.getenv("OLLAMA_MODEL", "")
         if not model:
             return None
+        user_msg: Dict[str, Any] = {"role": "user", "content": user_content}
+        if images:
+            user_msg["images"] = images
         try:
             import requests
             resp = requests.post(
@@ -70,10 +99,10 @@ class TOIRExpertService:
                     "stream": False,
                     "think": False,
                     "format": "json",
-                    "options": {"temperature": 0.2, "num_ctx": 4096},
+                    "options": {"temperature": 0.2, "num_ctx": 8192 if images else 4096},
                     "messages": [
-                        {"role": "system", "content": self.system_prompt},
-                        {"role": "user", "content": user_content},
+                        {"role": "system", "content": system_prompt or self.system_prompt},
+                        user_msg,
                     ],
                 },
                 timeout=settings.OLLAMA_TIMEOUT,

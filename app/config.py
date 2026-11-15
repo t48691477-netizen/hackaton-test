@@ -54,8 +54,8 @@ class Settings(BaseModel):
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gemini-2.5-flash")
     OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "")
-    OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT", "90"))
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3-vl-8b:latest")
+    OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT", "180"))
     
     # Inference settings
     CONF_THRESHOLD_CORROSION: float = 0.25
