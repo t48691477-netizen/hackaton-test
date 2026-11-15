@@ -1,31 +1,40 @@
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type FormEvent,
-} from 'react';
-import {
+  Activity,
+  AlertTriangle,
   Camera,
   CameraOff,
   Check,
+  CheckCircle2,
   ChevronDown,
   Copy,
   Crosshair,
   ExternalLink,
+  FileSearch,
   Gauge,
   Info,
   Loader2,
+  Maximize2,
+  Minimize2,
   MousePointer2,
+  Radio,
   RefreshCw,
   RotateCcw,
   Send,
+  SwitchCamera,
   Upload,
   Wrench,
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
-import { API_CONFIG, createReport, inspectImage } from '../lib/api';
+import {
+  API_CONFIG,
+  createReport,
+  fetchEquipmentById,
+  fetchTelemetry,
+  inspectImage,
+  requestDetailedAnalysis,
+} from '../lib/api';
 import {
   EMPLOYEES_CHANGED_EVENT,
   getEngineers,
@@ -35,12 +44,16 @@ import {
 import {
   getEquipmentNode,
   type Defect,
+  type DetailedAnalysisResult,
+  type EquipmentDetail,
   type EquipmentNode,
   type InspectionResult,
   type Report,
   type Severity,
   type SpecItem,
+  type TelemetryData,
 } from '../lib/inspection';
+import { useFocusTrap } from '../lib/useFocusTrap';
 
 type ScannerStatus = 'starting' | 'live' | 'ready' | 'error';
 
@@ -131,6 +144,12 @@ function formatDate(value: string): string {
   return Number.isNaN(date.getTime()) ? value : DATE_FORMATTER.format(date);
 }
 
+function formatConditionProbability(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${Math.round(value * 100)}%`
+    : 'Нет данных';
+}
+
 function describeCameraError(error: unknown): string {
   const name = error instanceof Error ? error.name : '';
 
@@ -153,16 +172,16 @@ function describeCameraError(error: unknown): string {
 
 function SpecGrid({ specs }: { specs: SpecItem[] }) {
   return (
-    <dl className="mt-2 grid grid-cols-1 gap-px border border-line bg-line min-[420px]:grid-cols-2">
+    <dl className="mt-2 grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line min-[420px]:grid-cols-2">
       {specs.map((spec) => (
         <div key={spec.label} className="min-w-0 bg-panel px-3 py-2.5">
-          <dt className="text-[9px] uppercase leading-4 tracking-[0.1em] text-faint">
+          <dt className="text-xs leading-4 text-faint">
             {spec.label}
           </dt>
-          <dd className="mt-0.5 break-words font-mono text-xs leading-5 text-ink">
+          <dd className="mt-0.5 break-words text-xs leading-5 text-ink">
             {spec.value}
             {spec.unit ? (
-              <span className="ml-1 text-[10px] text-muted">{spec.unit}</span>
+              <span className="ml-1 text-xs text-muted">{spec.unit}</span>
             ) : null}
           </dd>
         </div>
@@ -253,7 +272,7 @@ function DefectOverlay({
             )} процентов`}
           >
             <span
-              className={`absolute -top-6 left-0 whitespace-nowrap border bg-canvas/95 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] ${meta.border} ${meta.text}`}
+              className={`absolute -top-6 left-0 whitespace-nowrap border bg-canvas/95 px-1.5 py-0.5 text-xs ${meta.border} ${meta.text}`}
             >
               {defect.label} · {Math.round(defect.confidence * 100)}%
             </span>
@@ -275,13 +294,13 @@ function CameraGuide() {
       <div className="absolute inset-0 grid place-items-center">
         <div className="flex items-center gap-3 border border-line bg-canvas/80 px-3 py-2">
           <Crosshair className="h-4 w-4 text-accent" aria-hidden="true" />
-          <p className="font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-soft">
+          <p className="text-xs font-medium text-soft">
             Наведите на оборудование
           </p>
         </div>
       </div>
 
-      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 text-xs text-faint">
         <span className="h-1.5 w-1.5 bg-accent" aria-hidden="true" />
         PSC-02 / демо
       </div>
@@ -317,7 +336,7 @@ function CameraError({
           Загрузить фото
         </button>
       </div>
-      <p className="mt-4 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+      <p className="mt-4 text-xs text-faint">
         Камера работает только на HTTPS или localhost
       </p>
     </div>
@@ -345,10 +364,10 @@ function HowItWorksContent({ status }: { status: ScannerStatus }) {
       <div className="grid gap-8 pb-8 sm:grid-cols-3 sm:gap-10">
         {steps.map((step, index) => (
           <div key={step.title} className="border-t border-line pt-5">
-            <p className="font-mono text-[10px] tracking-[0.16em] text-accent">
-              0{index + 1}
+            <p className="text-xs text-accent">
+              {index + 1}
             </p>
-            <h3 className="mt-3 text-lg font-medium tracking-[-0.02em] text-ink">
+            <h3 className="mt-3 text-lg font-medium text-ink">
               {step.title}
             </h3>
             <p className="mt-2 text-sm leading-6 text-muted">{step.text}</p>
@@ -365,7 +384,7 @@ function HowItWorksContent({ status }: { status: ScannerStatus }) {
             интеграции их заменит POST /api/inspect.
           </p>
         </div>
-        <div className="flex items-center gap-3 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+        <div className="flex items-center gap-3 text-xs text-faint">
           Статус камеры
           <span className="text-soft">{STATUS_META[status].label}</span>
         </div>
@@ -472,7 +491,7 @@ function ReportCreateForm({
           Передача задачи
         </h3>
         {API_CONFIG.useMock ? (
-          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+          <span className="text-xs text-faint">
             mock
           </span>
         ) : null}
@@ -493,7 +512,7 @@ function ReportCreateForm({
 
       {saved && savedReport ? (
         <div className="mt-3 space-y-3">
-          <div className="border border-line bg-panel p-3">
+          <div className="rounded-xl border border-line bg-panel p-3">
             <p className="technical">Исполнитель</p>
             <p className="mt-1 text-sm font-medium text-ink">{assigneeName}</p>
           </div>
@@ -527,7 +546,7 @@ function ReportCreateForm({
             ) : null}
           </div>
 
-          <p className="break-all font-mono text-[10px] leading-4 text-faint">
+          <p className="break-all text-xs leading-4 text-faint">
             {taskUrl}
           </p>
 
@@ -559,7 +578,7 @@ function ReportCreateForm({
                 onChange={(event) => setAssigneeId(event.target.value)}
                 required
                 disabled={!engineers.length}
-                className="mt-1.5 min-h-10 w-full border border-line bg-panel px-3 py-2 text-xs text-ink"
+                className="mt-1.5 min-h-10 w-full rounded-lg border border-line bg-panel px-3 py-2 text-xs text-ink"
                 autoFocus
               >
                 {engineers.map((employee) => (
@@ -569,7 +588,7 @@ function ReportCreateForm({
                 ))}
               </select>
               {!engineers.length ? (
-                <p className="mt-1.5 text-[10px] leading-4 text-danger">
+                <p className="mt-1.5 text-xs leading-4 text-danger">
                   Нет доступных исполнителей — передача задачи недоступна.
                 </p>
               ) : null}
@@ -585,7 +604,7 @@ function ReportCreateForm({
                 value={comment}
                 onChange={(event) => setComment(event.target.value)}
                 rows={4}
-                className="mt-1.5 w-full resize-y border border-line bg-panel px-3 py-2 text-xs leading-5 text-ink"
+                className="mt-1.5 w-full resize-y rounded-lg border border-line bg-panel px-3 py-2 text-xs leading-5 text-ink"
               />
             </div>
 
@@ -602,9 +621,9 @@ function ReportCreateForm({
                   setPhoto(event.target.files?.[0] ?? snapshotPhoto)
                 }
                 aria-describedby="report-photo-hint"
-                className="mt-1.5 block w-full min-w-0 text-xs text-muted file:mr-2 file:border file:border-line file:bg-panel file:px-2 file:py-2 file:text-xs file:text-ink"
+                className="mt-1.5 block w-full min-w-0 text-xs text-muted file:mr-2 file:rounded-md file:border file:border-line file:bg-panel file:px-2 file:py-2 file:text-xs file:text-ink"
               />
-              <p id="report-photo-hint" className="mt-1.5 text-[10px] leading-4 text-faint">
+              <p id="report-photo-hint" className="mt-1.5 text-xs leading-4 text-faint">
                 {API_CONFIG.useMock
                   ? 'Демо: фото не отправляется; backend не подключён.'
                   : photo
@@ -653,12 +672,249 @@ function ReportCreateForm({
   );
 }
 
+function DetailedAnalysisView({ result }: { result: DetailedAnalysisResult }) {
+  return (
+    <div className="mt-4 border border-line bg-raised p-4" aria-live="polite">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-ink">Подробный анализ</h3>
+        <span className="text-xs text-muted">{result.processing_ms} мс</span>
+      </div>
+      <p className="mt-1 break-all text-xs leading-4 text-faint">
+        Осмотр {result.inspection_id}
+      </p>
+      <p className="mt-2 text-sm leading-6 text-soft">{result.summary}</p>
+      {result.findings.length > 0 ? (
+        <ul className="mt-4 divide-y divide-line border-y border-line">
+          {result.findings.map((finding, index) => (
+            <li key={`${finding.title}-${index}`} className="py-3">
+              <div className="flex items-start justify-between gap-3">
+                <h4 className="text-sm font-semibold text-ink">{finding.title}</h4>
+                <span className={`shrink-0 text-xs ${SEVERITY_META[finding.severity].text}`}>
+                  {SEVERITY_META[finding.severity].label}
+                </span>
+              </div>
+              <p className="mt-1 text-xs leading-5 text-muted">{finding.description}</p>
+              <p className="mt-2 text-xs leading-5 text-soft">{finding.recommendation}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {result.probable_causes.length > 0 ? (
+        <div className="mt-4">
+          <h4 className="technical">Вероятные причины</h4>
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-soft">
+            {result.probable_causes.map((cause) => <li key={cause}>{cause}</li>)}
+          </ul>
+        </div>
+      ) : null}
+      {result.recommendation_steps.length > 0 ? (
+        <div className="mt-4">
+          <h4 className="technical">Рекомендуемые действия</h4>
+          <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-5 text-soft">
+            {result.recommendation_steps.map((step, index) => (
+              <li key={`${index}-${step}`}>{step}</li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+      <p className="mt-4 break-words text-xs leading-4 text-faint">
+        Модели: {result.models.join(', ') || 'не указаны'}
+      </p>
+    </div>
+  );
+}
+
+function TelemetryWidget({
+  equipmentId,
+  initialTelemetry,
+}: {
+  equipmentId: string;
+  initialTelemetry?: TelemetryData | null;
+}) {
+  const [telemetry, setTelemetry] = useState<TelemetryData | null>(initialTelemetry ?? null);
+  const [loading, setLoading] = useState(!initialTelemetry);
+  const [activeTab, setActiveTab] = useState<'all' | 'vibration' | 'temperature'>('all');
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const data = await fetchTelemetry(equipmentId);
+        if (active) {
+          setTelemetry(data);
+          setLoading(false);
+        }
+      } catch {
+        // сохраняем текущее состояние при ошибке
+      }
+    };
+
+    void load();
+    const interval = setInterval(() => {
+      void load();
+    }, 3500);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [equipmentId]);
+
+  if (!telemetry && loading) {
+    return (
+      <div className="mt-4 flex items-center gap-2 border-y border-line py-3 text-xs text-muted">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+        Подключение к серверу интеграции (OPC UA / Modbus)...
+      </div>
+    );
+  }
+
+  if (!telemetry) return null;
+
+  const isAlarm = telemetry.overall_status === 'alarm';
+  const isWarning = telemetry.overall_status === 'warning';
+  const isNormal = telemetry.overall_status === 'normal';
+
+  const statusBadge = isAlarm
+    ? 'border-danger/30 bg-danger/10 text-danger'
+    : isWarning
+    ? 'border-warn/30 bg-warn/10 text-warn'
+    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
+
+  const statusDot = isAlarm ? 'bg-danger' : isWarning ? 'bg-warn' : 'bg-emerald-500';
+
+  const channels = telemetry.channels ?? [];
+  const filteredChannels = channels.filter((ch) => {
+    if (activeTab === 'vibration') return ch.modality === 'vibration';
+    if (activeTab === 'temperature') return ch.modality === 'temperature';
+    return true;
+  });
+
+  return (
+    <section className="mt-5 border-y border-line py-4" aria-labelledby="telemetry-heading">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2 w-2">
+            <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${statusDot}`} />
+            <span className={`relative inline-flex h-2 w-2 rounded-full ${statusDot}`} />
+          </span>
+          <h3 id="telemetry-heading" className="technical flex items-center gap-1.5 font-medium">
+            <Radio className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+            Датчики (OPC UA / Modbus)
+          </h3>
+        </div>
+        <span className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-medium ${statusBadge}`}>
+          {isAlarm ? (
+            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+          ) : isNormal ? (
+            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+          ) : (
+            <Activity className="h-3 w-3" aria-hidden="true" />
+          )}
+          {telemetry.diagnosis}
+        </span>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between text-[11px] text-faint">
+        <span>
+          Протокол:{' '}
+          {typeof telemetry.integration === 'object' && telemetry.integration !== null
+            ? (telemetry.integration as { protocols?: string[] }).protocols?.join(' / ') || 'OPC UA / Modbus TCP'
+            : typeof telemetry.integration === 'string'
+            ? telemetry.integration
+            : 'OPC UA / Modbus TCP'}
+        </span>
+        <span>Обороты: {Math.round(telemetry.rpm)} об/мин</span>
+      </div>
+
+      <div className="mt-3 flex gap-1.5 border-b border-line pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab('all')}
+          className={`rounded px-2 py-1 text-xs transition-colors ${
+            activeTab === 'all'
+              ? 'bg-accent/15 font-medium text-accent'
+              : 'text-faint hover:text-ink'
+          }`}
+        >
+          Все ({channels.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('vibration')}
+          className={`rounded px-2 py-1 text-xs transition-colors ${
+            activeTab === 'vibration'
+              ? 'bg-accent/15 font-medium text-accent'
+              : 'text-faint hover:text-ink'
+          }`}
+        >
+          Вибрация
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('temperature')}
+          className={`rounded px-2 py-1 text-xs transition-colors ${
+            activeTab === 'temperature'
+              ? 'bg-accent/15 font-medium text-accent'
+              : 'text-faint hover:text-ink'
+          }`}
+        >
+          Температура
+        </button>
+      </div>
+
+      <div className="mt-2.5 grid grid-cols-2 gap-2">
+        {filteredChannels.map((ch) => {
+          const chAlarm = ch.status === 'alarm';
+          const chWarn = ch.status === 'warning';
+          const chClass = chAlarm
+            ? 'border-danger/40 bg-danger/5'
+            : chWarn
+            ? 'border-warn/40 bg-warn/5'
+            : 'border-line bg-panel/50';
+
+          return (
+            <div key={ch.id} className={`rounded border p-2 transition-colors ${chClass}`}>
+              <div className="flex items-center justify-between">
+                <span className="truncate text-[11px] text-faint" title={ch.name}>
+                  {ch.name}
+                </span>
+                {chAlarm && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />}
+                {chWarn && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />}
+              </div>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span
+                  className={`text-sm font-semibold tabular ${
+                    chAlarm ? 'text-danger' : chWarn ? 'text-warn' : 'text-ink'
+                  }`}
+                >
+                  {ch.value}
+                </span>
+                <span className="text-[11px] text-faint">{ch.unit}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between text-[10px] text-faint">
+                <span>Порог: {ch.warning_threshold}</span>
+                {ch.standard ? (
+                  <span className="max-w-[70px] truncate" title={ch.standard}>
+                    {ch.standard}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 interface LiveReportProps {
   analysis: InspectionResult;
   activeDefect: Defect | null;
   activeNode: EquipmentNode | null;
   selectedId: string | null;
   snapshotPhoto: Blob | null;
+  analysisPhoto: Blob | null;
   engineers: Employee[];
   onHover: (id: string | null) => void;
   onFocus: (id: string | null) => void;
@@ -671,23 +927,158 @@ function LiveReport({
   activeNode,
   selectedId,
   snapshotPhoto,
+  analysisPhoto,
   engineers,
   onHover,
   onFocus,
   onSelect,
 }: LiveReportProps) {
   const [reportResult, setReportResult] = useState<InspectionResult | null>(null);
+  const [equipmentState, setEquipmentState] = useState<{
+    equipmentId: string;
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    detail?: EquipmentDetail;
+    message?: string;
+  }>({ equipmentId: analysis.equipment.id, status: 'idle' });
+  const [equipmentRetry, setEquipmentRetry] = useState(0);
+  const [detailedState, setDetailedState] = useState<{
+    inspectionId: string;
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    result?: DetailedAnalysisResult;
+    message?: string;
+  }>({ inspectionId: analysis.inspection_id, status: 'idle' });
+  const equipmentRequestIdRef = useRef(0);
+  const equipmentCacheRef = useRef(new Map<string, EquipmentDetail>());
+  const equipmentRequestsRef = useRef(new Map<string, Promise<EquipmentDetail>>());
+  const detailedRequestIdRef = useRef(0);
   const reportButtonRef = useRef<HTMLButtonElement>(null);
+  const activeDefectId = activeDefect?.id ?? null;
   const activeMeta = activeDefect
     ? SEVERITY_META[activeDefect.severity]
     : null;
   const mockSpecs = API_CONFIG.useMock || analysis.meta.vision_mode === 'mock';
 
+  useEffect(() => {
+    const requestId = ++equipmentRequestIdRef.current;
+    const equipmentId = analysis.equipment.id;
+
+    if (!activeDefectId) {
+      setEquipmentState({ equipmentId, status: 'idle' });
+      return () => {
+        if (equipmentRequestIdRef.current === requestId) {
+          equipmentRequestIdRef.current += 1;
+        }
+      };
+    }
+
+    const cached = equipmentCacheRef.current.get(equipmentId);
+    if (cached) {
+      setEquipmentState({ equipmentId, status: 'ready', detail: cached });
+      return () => {
+        if (equipmentRequestIdRef.current === requestId) {
+          equipmentRequestIdRef.current += 1;
+        }
+      };
+    }
+
+    setEquipmentState({ equipmentId, status: 'loading' });
+    let request = equipmentRequestsRef.current.get(equipmentId);
+    if (!request) {
+      request = fetchEquipmentById(equipmentId).then((detail) => {
+        if (detail.id !== equipmentId) {
+          throw new Error('Сервис вернул паспорт другого оборудования.');
+        }
+        equipmentCacheRef.current.set(equipmentId, detail);
+        return detail;
+      }).finally(() => {
+        equipmentRequestsRef.current.delete(equipmentId);
+      });
+      equipmentRequestsRef.current.set(equipmentId, request);
+    }
+
+    void request.then((detail) => {
+      if (equipmentRequestIdRef.current === requestId) {
+        setEquipmentState({ equipmentId, status: 'ready', detail });
+      }
+    }).catch((requestError: unknown) => {
+      if (equipmentRequestIdRef.current === requestId) {
+        setEquipmentState({
+          equipmentId,
+          status: 'error',
+          message: requestError instanceof Error
+            ? requestError.message
+            : 'Не удалось загрузить паспорт оборудования.',
+        });
+      }
+    });
+
+    return () => {
+      if (equipmentRequestIdRef.current === requestId) {
+        equipmentRequestIdRef.current += 1;
+      }
+    };
+  }, [activeDefectId, analysis.equipment.id, equipmentRetry]);
+
+  useEffect(() => () => {
+    equipmentRequestIdRef.current += 1;
+    detailedRequestIdRef.current += 1;
+  }, []);
+
+  const visibleEquipmentState = equipmentState.equipmentId === analysis.equipment.id
+    ? equipmentState
+    : { equipmentId: analysis.equipment.id, status: 'idle' as const };
+  const equipmentDetail = visibleEquipmentState.status === 'ready'
+    ? visibleEquipmentState.detail
+    : null;
+  const loadedNode = activeDefect && equipmentDetail
+    ? equipmentDetail.nodes.find((node) => node.id === activeDefect.node_id) ?? null
+    : null;
+  const displayedEquipment = equipmentDetail ?? analysis.equipment;
+
+  const handleDetailedAnalysis = async () => {
+    if (
+      !analysisPhoto ||
+      (detailedState.inspectionId === analysis.inspection_id && detailedState.status === 'loading')
+    ) return;
+
+    const requestId = ++detailedRequestIdRef.current;
+    const inspectionId = analysis.inspection_id;
+    setDetailedState({ inspectionId, status: 'loading' });
+
+    try {
+      const result = await requestDetailedAnalysis({
+        image: analysisPhoto,
+        inspection: analysis,
+        conditionParameters: analysis.condition_parameters,
+      });
+      if (result.inspection_id !== inspectionId) {
+        throw new Error('Backend вернул подробный анализ для другого осмотра.');
+      }
+      if (requestId === detailedRequestIdRef.current) {
+        setDetailedState({ inspectionId, status: 'ready', result });
+      }
+    } catch (requestError) {
+      if (requestId === detailedRequestIdRef.current) {
+        setDetailedState({
+          inspectionId,
+          status: 'error',
+          message: requestError instanceof Error
+            ? requestError.message
+            : 'Не удалось получить подробный анализ.',
+        });
+      }
+    }
+  };
+
+  const visibleDetailedState = detailedState.inspectionId === analysis.inspection_id
+    ? detailedState
+    : { inspectionId: analysis.inspection_id, status: 'idle' as const };
+
   return (
-    <div className="animate-fade-in border border-line bg-panel">
+    <div className="animate-fade-in rounded-xl border border-line bg-panel">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line px-4 py-3 sm:px-5">
         <span className="eyebrow">Отчёт · live</span>
-        <span className="inline-flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+        <span className="inline-flex items-center gap-2 text-xs text-faint">
           <span
             className="h-1.5 w-1.5 animate-pulse-soft bg-ok"
             aria-hidden="true"
@@ -697,19 +1088,77 @@ function LiveReport({
       </div>
 
       <div className="p-4 sm:p-5">
-        <h2 className="text-lg font-medium leading-tight tracking-[-0.025em] text-ink sm:text-xl">
-          {analysis.equipment.name}
+        <h2 className="text-lg font-medium leading-tight text-ink sm:text-xl">
+          {displayedEquipment.name}
         </h2>
-        <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
-          Инв. № {analysis.equipment.inventory_number} · ресурс{' '}
-          {analysis.equipment.service_life_years} лет · ТО{' '}
-          {formatDate(analysis.equipment.last_maintenance_at)}
+        <p className="mt-2 text-xs text-faint">
+          Инв. № {displayedEquipment.inventory_number} · ресурс{' '}
+          {displayedEquipment.service_life_years} лет · ТО{' '}
+          {formatDate(displayedEquipment.last_maintenance_at)}
         </p>
 
         <div className="mt-4 border-l-2 border-accent pl-3 sm:mt-5 sm:pl-4">
           <p className="technical">Сводка</p>
-          <p className="mt-2 text-sm leading-6 text-soft">{analysis.summary}</p>
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-soft sm:line-clamp-none">
+            {analysis.summary}
+          </p>
         </div>
+
+        <section className="mt-5 border-y border-line py-4" aria-labelledby="condition-parameters-heading">
+          <h3 id="condition-parameters-heading" className="technical">Параметры realtime</h3>
+          <dl className="mt-2 divide-y divide-line">
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-xs text-soft">Утечка масла</dt>
+              <dd className="text-xs tabular text-ink">
+                {formatConditionProbability(analysis.condition_parameters?.oil_leak_probability)}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-xs text-soft">Ржавчина</dt>
+              <dd className="text-xs tabular text-ink">
+                {formatConditionProbability(analysis.condition_parameters?.rust_probability)}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-xs text-soft">Плохой сварной шов</dt>
+              <dd className="text-xs tabular text-ink">
+                {formatConditionProbability(analysis.condition_parameters?.poor_weld_probability)}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <TelemetryWidget
+          equipmentId={displayedEquipment.id}
+          initialTelemetry={displayedEquipment.telemetry ?? analysis.equipment.telemetry}
+        />
+
+        <section className="mt-5" aria-label="Подробный анализ дефектов">
+          <button
+            type="button"
+            className="btn-primary w-full"
+            onClick={() => void handleDetailedAnalysis()}
+            disabled={!analysisPhoto || visibleDetailedState.status === 'loading'}
+          >
+            {visibleDetailedState.status === 'loading'
+              ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              : <FileSearch className="h-4 w-4" aria-hidden="true" />}
+            {visibleDetailedState.status === 'loading' ? 'Запрашиваем анализ…' : 'более точный отчет'}
+          </button>
+          {!analysisPhoto ? (
+            <p className="mt-2 text-xs leading-5 text-muted">
+              Ожидается кадр, использованный для последнего realtime-результата.
+            </p>
+          ) : null}
+          {visibleDetailedState.status === 'error' ? (
+            <p className="mt-2 text-xs leading-5 text-danger" role="alert">
+              {visibleDetailedState.message}
+            </p>
+          ) : null}
+          {visibleDetailedState.status === 'ready' && visibleDetailedState.result ? (
+            <DetailedAnalysisView result={visibleDetailedState.result} />
+          ) : null}
+        </section>
 
         <section
           id="equipment-specs-panel"
@@ -717,25 +1166,28 @@ function LiveReport({
           aria-labelledby="specs-heading"
           aria-describedby={mockSpecs ? 'equipment-specs-source' : undefined}
           data-mock={mockSpecs ? 'equipment-specs' : undefined}
-          data-equipment-id={analysis.equipment.id}
+          data-equipment-id={displayedEquipment.id}
           data-node-id={activeNode?.id}
         >
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line pb-2">
             <p
               id="specs-heading"
-              className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-ink"
+              className="inline-flex items-center gap-2 text-xs text-ink"
             >
               <Gauge className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
               Технические характеристики
             </p>
-            <span className="inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+            <span className="inline-flex items-center gap-1.5 text-xs text-faint">
               <MousePointer2 className="h-3 w-3" aria-hidden="true" />
               {mockSpecs ? 'демо · mock' : 'по наведению'}
             </span>
           </div>
 
           {mockSpecs ? (
-            <p id="equipment-specs-source" className="mt-2 text-[10px] leading-4 text-faint">
+            <p
+              id="equipment-specs-source"
+              className="mt-2 hidden text-xs leading-4 text-faint sm:block"
+            >
               Демо-характеристики узла. После подключения backend здесь будут его
               характеристики, не замеры дефекта.
             </p>
@@ -745,13 +1197,13 @@ function LiveReport({
             <div className="mt-3">
               <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                 <div className="min-w-0">
-                  <p className="text-[10px] uppercase tracking-[0.12em] text-faint">
+                  <p className="text-xs text-faint">
                     Активная зона
                   </p>
                   <p className="mt-1 text-sm font-medium leading-5 text-ink">
                     {activeDefect.label}
                   </p>
-                  <p className="mt-1 font-mono text-[10px] text-faint">
+                  <p className="mt-1 text-xs text-faint">
                     {activeDefect.source_model === 'crack'
                       ? 'детекция трещин'
                       : 'сегментация коррозии'}{' '}
@@ -766,38 +1218,87 @@ function LiveReport({
                 </span>
               </div>
 
+              {visibleEquipmentState.status === 'loading' ? (
+                <p className="mt-3 flex items-center gap-2 border-y border-line py-3 text-xs text-muted" role="status" aria-live="polite">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" aria-hidden="true" />
+                  Загружаем паспорт оборудования…
+                </p>
+              ) : null}
+
+              {visibleEquipmentState.status === 'error' ? (
+                <div className="mt-3 border-y border-line py-3" role="alert">
+                  <p className="text-xs leading-5 text-danger">
+                    {visibleEquipmentState.message}
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-2 inline-flex min-h-9 items-center gap-2 text-xs font-medium text-ink underline decoration-line underline-offset-4 hover:decoration-ink"
+                    onClick={() => setEquipmentRetry((retry) => retry + 1)}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    Повторить загрузку
+                  </button>
+                </div>
+              ) : null}
+
+              {equipmentDetail ? (
+                <div className="mt-3 border-y border-line py-3">
+                  <p className="technical">Паспорт оборудования</p>
+                  <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
+                    <div>
+                      <dt className="text-xs text-muted">Модель</dt>
+                      <dd className="mt-0.5 text-xs font-medium text-ink">{equipmentDetail.model}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted">Производитель</dt>
+                      <dd className="mt-0.5 text-xs font-medium text-ink">{equipmentDetail.manufacturer}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted">Категория</dt>
+                      <dd className="mt-0.5 text-xs text-soft">{equipmentDetail.category}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted">Место установки</dt>
+                      <dd className="mt-0.5 text-xs text-soft">{equipmentDetail.location}</dd>
+                    </div>
+                  </dl>
+                </div>
+              ) : null}
+
               <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3">
                 <p className="technical">Узел</p>
                 <p className="text-right text-xs font-medium text-soft">
-                  {activeNode?.name ?? 'не определён'}
+                  {loadedNode?.name ?? activeNode?.name ?? 'не определён'}
                 </p>
               </div>
 
-              <SpecGrid
-                specs={
-                  activeNode?.specs.length
-                    ? activeNode.specs
-                    : analysis.equipment.specs
-                }
-              />
+              {visibleEquipmentState.status === 'ready' ? (
+                <SpecGrid
+                  specs={
+                    loadedNode?.specs.length
+                      ? loadedNode.specs
+                      : equipmentDetail?.specs ?? activeNode?.specs ?? analysis.equipment.specs
+                  }
+                />
+              ) : null}
 
               <dl className="mt-3 divide-y divide-line border-y border-line">
                 <div className="flex items-center justify-between gap-3 py-2">
                   <dt className="technical">Последнее ТО</dt>
-                  <dd className="font-mono text-[10px] text-soft">
-                    {formatDate(analysis.equipment.last_maintenance_at)}
+                  <dd className="text-xs text-soft">
+                    {formatDate(displayedEquipment.last_maintenance_at)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3 py-2">
                   <dt className="technical">Следующее ТО</dt>
-                  <dd className="font-mono text-[10px] text-soft">
-                    {formatDate(analysis.equipment.next_maintenance_at)}
+                  <dd className="text-xs text-soft">
+                    {formatDate(displayedEquipment.next_maintenance_at)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3 py-2">
                   <dt className="technical">Ресурс</dt>
-                  <dd className="font-mono text-[10px] text-soft">
-                    {analysis.equipment.service_life_years} лет
+                  <dd className="text-xs text-soft">
+                    {displayedEquipment.service_life_years} лет
                   </dd>
                 </div>
               </dl>
@@ -813,8 +1314,8 @@ function LiveReport({
         <div className="mt-6">
           <div className="flex items-center justify-between border-b border-line pb-2">
             <p className="technical">Зоны риска</p>
-            <span className="font-mono text-[10px] text-faint">
-              0{analysis.defects.length}
+            <span className="text-xs text-faint">
+              {analysis.defects.length}
             </span>
           </div>
 
@@ -847,7 +1348,7 @@ function LiveReport({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span
-                      className={`inline-flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.1em] ${meta.text}`}
+                      className={`inline-flex items-center gap-2 text-xs ${meta.text}`}
                     >
                       <span
                         className={`h-1.5 w-1.5 shrink-0 ${meta.dot}`}
@@ -855,7 +1356,7 @@ function LiveReport({
                       />
                       {meta.label}
                     </span>
-                    <span className="font-mono text-[10px] text-faint tabular">
+                    <span className="text-xs text-faint tabular">
                       {Math.round(defect.confidence * 100)}%
                     </span>
                   </div>
@@ -873,15 +1374,19 @@ function LiveReport({
                     />
                   </div>
 
-                  {active ? (
-                    <div className="mt-2 flex gap-2 text-[11px] leading-5 text-muted">
-                      <Wrench
-                        className="mt-1 h-3 w-3 shrink-0 text-faint"
-                        aria-hidden="true"
-                      />
-                      <span>{defect.recommendation}</span>
-                    </div>
-                  ) : null}
+                  <div
+                    aria-hidden={!active}
+                    data-defect-recommendation
+                    className={`mt-2 flex h-10 gap-2 overflow-hidden text-xs leading-5 text-muted ${
+                      active ? '' : 'invisible'
+                    }`}
+                  >
+                    <Wrench
+                      className="mt-1 h-3 w-3 shrink-0 text-faint"
+                      aria-hidden="true"
+                    />
+                    <span className="line-clamp-2">{defect.recommendation}</span>
+                  </div>
                 </button>
               );
             })}
@@ -893,14 +1398,14 @@ function LiveReport({
             <p id="llm-heading" className="technical">
               Рекомендация по восстановлению
             </p>
-            <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+            <span className="text-xs text-faint">
               llm: {analysis.meta.llm_mode}
             </span>
           </div>
           <p className="mt-2 text-xs leading-5 text-soft">
             {analysis.llm.probable_cause}
           </p>
-          <p className="mt-1.5 text-[10px] leading-4 text-faint">
+          <p className="mt-1.5 hidden text-xs leading-4 text-faint sm:block">
             Рекомендация относится к повреждённому узлу и передаётся сотруднику
             вместе с задачей.
           </p>
@@ -908,10 +1413,10 @@ function LiveReport({
             {analysis.llm.recommendation_steps.map((step, index) => (
               <li
                 key={step}
-                className="flex gap-2.5 text-[11px] leading-5 text-muted sm:text-xs sm:leading-6"
+                className="flex gap-2.5 text-xs leading-5 text-muted sm:text-xs sm:leading-6"
               >
-                <span className="font-mono text-[9px] text-accent">
-                  {String(index + 1).padStart(2, '0')}
+                <span className="text-xs text-accent">
+                  {index + 1}
                 </span>
                 {step}
               </li>
@@ -919,15 +1424,15 @@ function LiveReport({
           </ol>
         </section>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-faint">
           <span>обработка {analysis.meta.processing_ms} мс</span>
           <span>обновление ~{DETECTION_INTERVAL_MS / 1000} с</span>
         </div>
 
-        <p className="mt-3 text-[10px] leading-4 text-faint">
+        <p className="mt-3 text-xs leading-4 text-faint">
           {API_CONFIG.useMock
-            ? 'Демо-результат. При интеграции заменится ответом POST /api/inspect.'
-            : 'Результат получен от backend. Не использовать как основание для ремонта без проверки инженером.'}
+            ? 'Демо-режим: распознавание симулируется на устройстве.'
+            : 'Результат backend. Не основание для ремонта без проверки инженером.'}
         </p>
 
         <div className="mt-5 border-t border-line pt-4">
@@ -962,35 +1467,33 @@ function LiveReport({
 
 function EmptyReport({ status }: { status: ScannerStatus }) {
   return (
-    <div className="border border-line bg-panel" data-placeholder="equipment-specs">
+    <div className="rounded-xl border border-line bg-panel" data-placeholder="equipment-specs">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line px-4 py-3 sm:px-5">
         <span className="eyebrow">Отчёт · live</span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+        <span className="text-xs text-faint">
           ожидание
         </span>
       </div>
 
       <div className="p-4 sm:p-5">
         <p
-          className="font-mono text-[4rem] font-medium leading-none tracking-[-0.06em] text-line-strong"
+          className="text-[4rem] font-medium leading-none text-line-strong"
           aria-hidden="true"
         >
           00
         </p>
-        <h2 className="mt-4 text-xl font-medium tracking-[-0.025em] text-ink">
+        <h2 className="mt-4 text-xl font-medium text-ink">
           Здесь появятся характеристики
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          Наведите камеру на оборудование. Распознавание начнётся автоматически,
-          без отдельной кнопки. После распознавания наведите курсор на дефект,
-          выберите его клавишей Tab или нажмите — здесь откроются технические
-          характеристики узла.
+          Наведите камеру на оборудование — распознавание начнётся само.
+          Нажмите на дефект, чтобы открыть характеристики узла.
         </p>
 
         <dl className="mt-6 divide-y divide-line border-y border-line">
           <div className="flex items-center justify-between gap-3 py-3">
             <dt className="technical">Статус камеры</dt>
-            <dd className="font-mono text-[10px] uppercase tracking-[0.08em] text-soft">
+            <dd className="text-xs text-soft">
               {status === 'ready'
                 ? 'Распознавание снимка'
                 : STATUS_META[status].label}
@@ -998,19 +1501,156 @@ function EmptyReport({ status }: { status: ScannerStatus }) {
           </div>
           <div className="flex items-center justify-between gap-3 py-3">
             <dt className="technical">Режим</dt>
-            <dd className="font-mono text-[10px] uppercase tracking-[0.08em] text-soft">
+            <dd className="text-xs text-soft">
               live · {API_CONFIG.useMock ? 'mock' : 'real'}
             </dd>
           </div>
           <div className="flex items-center justify-between gap-3 py-3">
             <dt className="technical">Обработка</dt>
-            <dd className="font-mono text-[10px] uppercase tracking-[0.08em] text-soft">
+            <dd className="text-xs text-soft">
               на устройстве
             </dd>
           </div>
         </dl>
+
+        <TelemetryWidget equipmentId="pump-cns-38-220" />
       </div>
     </div>
+  );
+}
+
+interface FullscreenCameraViewProps {
+  status: ScannerStatus;
+  error: string | null;
+  analysis: InspectionResult | null;
+  activeDefectId: string | null;
+  selectedDefectId: string | null;
+  frontCamera: boolean;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  streamRef: RefObject<MediaStream | null>;
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  onHover: (id: string | null) => void;
+  onFocus: (id: string | null) => void;
+  onSelect: (id: string) => void;
+  onToggleCamera: () => void;
+  onRetry: () => void;
+  onClose: () => void;
+}
+
+/**
+ * Полноэкранный просмотр камеры. Рендерится в body: страница обёрнута
+ * в `animate-page-in` с transform, из-за которого `fixed` внутри неё
+ * позиционировался бы относительно страницы, а не окна.
+ */
+function FullscreenCameraView({
+  status,
+  error,
+  analysis,
+  activeDefectId,
+  selectedDefectId,
+  frontCamera,
+  videoRef,
+  streamRef,
+  triggerRef,
+  onHover,
+  onFocus,
+  onSelect,
+  onToggleCamera,
+  onRetry,
+  onClose,
+}: FullscreenCameraViewProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(dialogRef, {
+    initialFocus: '[data-camera-fullscreen-close]',
+    onEscape: onClose,
+    restoreFocus: () => triggerRef.current?.focus(),
+  });
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  // В портале элемент video монтируется заново — возвращаем на него поток.
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+
+    if (video && stream && video.srcObject !== stream) {
+      video.srcObject = stream;
+      void video.play().catch(() => {});
+    }
+  }, [streamRef, videoRef]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] bg-black">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Камера на весь экран"
+        className="relative h-full w-full"
+      >
+        {status === 'error' ? (
+          <CameraError message={error} onRetry={onRetry} onUpload={onClose} />
+        ) : (
+          <>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`h-full w-full object-cover ${
+                frontCamera ? 'scale-x-[-1]' : ''
+              }`}
+              aria-label="Видеопоток с камеры"
+            />
+            {status === 'live' ? <div className="scanline" /> : null}
+            {!analysis ? <CameraGuide /> : null}
+            {analysis ? (
+              <DefectOverlay
+                analysis={analysis}
+                activeId={activeDefectId}
+                selectedId={selectedDefectId}
+                onHover={onHover}
+                onFocus={onFocus}
+                onSelect={onSelect}
+              />
+            ) : null}
+          </>
+        )}
+
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleCamera}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center border border-white/30 bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/75"
+            aria-label={
+              frontCamera
+                ? 'Включить основную камеру'
+                : 'Включить фронтальную камеру'
+            }
+          >
+            <SwitchCamera className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            data-camera-fullscreen-close
+            className="inline-flex min-h-11 min-w-11 items-center justify-center border border-white/30 bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/75"
+            aria-label="Свернуть камеру"
+          >
+            <Minimize2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1020,6 +1660,7 @@ export function Scanner() {
   const requestIdRef = useRef(0);
   const tickRef = useRef(0);
   const imageBlobRef = useRef<Blob | null>(null);
+  const [analysisImage, setAnalysisImage] = useState<Blob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [status, setStatus] = useState<ScannerStatus>('starting');
@@ -1034,6 +1675,15 @@ export function Scanner() {
   const [engineers, setEngineers] = useState<Employee[]>(() =>
     getEngineers(loadEmployees()),
   );
+  // Фронтальная / основная камера. Состояние ведёт кнопка; facingMode
+  // передаётся только при явном выборе — так настольный браузер без задней
+  // камеры не падает с OverconstrainedError.
+  const [frontCamera, setFrontCamera] = useState(false);
+  const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+  const fullscreenTriggerRef = useRef<HTMLButtonElement>(null);
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     const refresh = () => setEngineers(getEngineers(loadEmployees()));
@@ -1059,67 +1709,85 @@ export function Scanner() {
     }
   }, []);
 
-  const startCamera = useCallback(async () => {
-    const requestId = ++requestIdRef.current;
-
-    stopStream();
-    setError(null);
-    setSnapshot(null);
-    setAnalysis(null);
-    setHoveredDefectId(null);
-    setFocusedDefectId(null);
-    setSelectedDefectId(null);
-    setLiveError(null);
-    imageBlobRef.current = null;
-    setStatus('starting');
-    tickRef.current = 0;
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setStatus('error');
-      setError(
-        'Браузер не поддерживает доступ к камере. Откройте страницу в современном браузере или загрузите фотографию.',
-      );
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      });
-
-      if (requestId !== requestIdRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-
-      const video = videoRef.current;
-      if (!video) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-
-      streamRef.current = stream;
-      video.srcObject = stream;
-      await video.play();
-
-      if (requestId === requestIdRef.current) {
-        setStatus('live');
-      }
-    } catch (cameraError) {
-      if (requestId !== requestIdRef.current) {
-        return;
-      }
+  const startCamera = useCallback(
+    async (nextFrontCamera = frontCamera) => {
+      const requestId = ++requestIdRef.current;
 
       stopStream();
-      setStatus('error');
-      setError(describeCameraError(cameraError));
-    }
-  }, [stopStream]);
+      setError(null);
+      setSnapshot(null);
+      setAnalysis(null);
+      setAnalysisImage(null);
+      setHoveredDefectId(null);
+      setFocusedDefectId(null);
+      setSelectedDefectId(null);
+      setLiveError(null);
+      imageBlobRef.current = null;
+      setVideoSize(null);
+      setStatus('starting');
+      tickRef.current = 0;
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setStatus('error');
+        setError(
+          'Браузер не поддерживает доступ к камере. Откройте страницу в современном браузере или загрузите фотографию.',
+        );
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode:
+              nextFrontCamera !== undefined
+                ? { ideal: nextFrontCamera ? 'user' : 'environment' }
+                : undefined,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+
+        if (requestId !== requestIdRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        const video = videoRef.current;
+        if (!video) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+        video.srcObject = stream;
+        await video.play();
+
+        // Пропорции контейнера берём из реального потока, а не из жёсткого
+        // 16:9: на телефоне вертикальный поток иначе обрезается по краям.
+        const track = stream.getVideoTracks?.()[0];
+        const settings = track?.getSettings?.() ?? {};
+
+        setVideoSize({
+          width: settings.width || video.videoWidth || 1280,
+          height: settings.height || video.videoHeight || 720,
+        });
+
+        if (requestId === requestIdRef.current) {
+          setStatus('live');
+        }
+      } catch (cameraError) {
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+
+        stopStream();
+        setStatus('error');
+        setError(describeCameraError(cameraError));
+      }
+    },
+    [frontCamera, stopStream],
+  );
 
   useEffect(() => {
     void startCamera();
@@ -1182,7 +1850,7 @@ export function Scanner() {
       const tick = tickRef.current;
 
       try {
-        const frame = API_CONFIG.useMock ? null : await captureFrame();
+        const frame = await captureFrame();
 
         if (cancelled) {
           return;
@@ -1196,6 +1864,7 @@ export function Scanner() {
         const result = await inspectImage(frame, 'pump-cns-38-220', tick);
 
         if (!cancelled) {
+          setAnalysisImage(frame ?? imageBlobRef.current);
           setAnalysis(result);
           setLiveError(null);
         }
@@ -1234,9 +1903,28 @@ export function Scanner() {
     };
   }, [snapshot, status]);
 
+  const handleToggleCamera = useCallback(() => {
+    setFrontCamera((current) => !current);
+    void startCamera(!frontCamera);
+  }, [frontCamera, startCamera]);
+
+  // Поток хранится в ref и не зависит от того, где сейчас смонтирован
+  // элемент video (обычный экран или полноэкранный): при каждой отрисовке
+  // возвращаем камеру на место.
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+
+    if (video && stream && video.srcObject !== stream) {
+      video.srcObject = stream;
+      void video.play().catch(() => {});
+    }
+  });
+
   const handleReset = useCallback(() => {
     setSnapshot(null);
     setAnalysis(null);
+    setAnalysisImage(null);
     setHoveredDefectId(null);
     setFocusedDefectId(null);
     setSelectedDefectId(null);
@@ -1285,6 +1973,7 @@ export function Scanner() {
           stopStream();
           tickRef.current = 0;
           imageBlobRef.current = file;
+          setAnalysisImage(null);
           setSnapshot({
             src,
             width: image.naturalWidth || 1280,
@@ -1326,7 +2015,6 @@ export function Scanner() {
   return (
     <div className="space-y-7">
       <PageHeader
-        index="01"
         label="Компьютерное зрение"
         title="Веб-сканер"
         description="Наведите камеру на оборудование — дефекты и технические характеристики появляются автоматически. Наведите курсор на дефект, чтобы открыть характеристики узла."
@@ -1345,7 +2033,7 @@ export function Scanner() {
               />
               {statusLabel}
             </span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-faint">
+            <span className="text-xs text-faint">
               CAM 01 · LIVE
             </span>
           </div>
@@ -1354,34 +2042,71 @@ export function Scanner() {
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(340px,0.9fr)] lg:gap-8 xl:grid-cols-[minmax(0,1.7fr)_minmax(400px,0.9fr)] 2xl:grid-cols-[minmax(0,1.8fr)_minmax(440px,0.8fr)] 2xl:gap-10">
         <section aria-label="Окно камеры" className="min-w-0">
-          <div className="flex items-center justify-between gap-3 border border-line border-b-0 bg-panel px-4 py-2.5">
-            <div className="flex min-w-0 items-center gap-3 font-mono text-[9px] uppercase tracking-[0.14em]">
+          <div className="flex items-center justify-between gap-3 rounded-t-xl border border-line border-b-0 bg-panel px-4 py-2.5">
+            <div className="flex min-w-0 items-center gap-3 text-xs">
               <span className="inline-flex items-center gap-1.5 text-accent">
                 <Camera className="h-3.5 w-3.5" aria-hidden="true" />
                 CAM 01
               </span>
               <span className="text-faint">
-                / {snapshot ? 'снимок' : 'поток'}
+                / {snapshot ? 'снимок' : frontCamera ? 'фронтальная' : 'основная'}
               </span>
-              <span className="hidden text-faint sm:inline">/ 1280 × 720</span>
+              {videoSize ? (
+                <span className="hidden text-faint sm:inline">
+                  / {videoSize.width} × {videoSize.height}
+                </span>
+              ) : null}
             </div>
 
-            <button
-              type="button"
-              onClick={handleReset}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-faint transition-colors hover:text-ink"
-            >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-              Сбросить
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              {!snapshot ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleToggleCamera}
+                    disabled={status === 'starting'}
+                    className="inline-flex min-h-11 items-center gap-1.5 px-2 text-xs text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label={
+                      frontCamera
+                        ? 'Включить основную камеру'
+                        : 'Включить фронтальную камеру'
+                    }
+                  >
+                    <SwitchCamera className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="hidden sm:inline">Камера</span>
+                  </button>
+                  <button
+                    ref={fullscreenTriggerRef}
+                    type="button"
+                    onClick={() => setFullscreen(true)}
+                    className="inline-flex min-h-11 items-center gap-1.5 px-2 text-xs text-muted transition-colors hover:text-ink"
+                    aria-label="Развернуть камеру на весь экран"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="hidden sm:inline">На весь экран</span>
+                  </button>
+                </>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={handleReset}
+                className="inline-flex min-h-11 shrink-0 items-center gap-1.5 px-2 text-xs text-muted transition-colors hover:text-ink"
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                Сбросить
+              </button>
+            </div>
           </div>
 
           <div
-            className="relative aspect-video max-h-[min(52vh,440px)] w-full overflow-hidden border border-line bg-black"
+            className={`relative aspect-video w-full max-h-[min(52vh,440px)] overflow-hidden border border-line bg-black lg:max-h-[min(60vh,520px)]`}
             style={
               snapshot
                 ? { aspectRatio: `${snapshot.width} / ${snapshot.height}` }
-                : undefined
+                : videoSize
+                  ? { aspectRatio: `${videoSize.width} / ${videoSize.height}` }
+                  : undefined
             }
           >
             {snapshot ? (
@@ -1396,13 +2121,15 @@ export function Scanner() {
                 onRetry={() => void startCamera()}
                 onUpload={() => fileInputRef.current?.click()}
               />
-            ) : (
+            ) : fullscreen ? null : (
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className="h-full w-full object-cover"
+                className={`h-full w-full object-cover ${
+                  frontCamera ? 'scale-x-[-1]' : ''
+                }`}
                 aria-label="Видеопоток с камеры"
               />
             )}
@@ -1417,7 +2144,7 @@ export function Scanner() {
                   <p className="mt-3 text-sm font-medium text-ink">
                     Подключаем камеру...
                   </p>
-                  <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+                  <p className="mt-1 text-xs text-faint">
                     Разрешите доступ в браузере
                   </p>
                 </div>
@@ -1442,7 +2169,7 @@ export function Scanner() {
             ) : null}
           </div>
 
-          <div className="flex flex-col gap-4 border border-line border-t-0 bg-panel p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 rounded-b-xl border border-line border-t-0 bg-panel p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2.5 text-xs leading-5 text-muted">
               <span
                 className={`h-1.5 w-1.5 shrink-0 ${
@@ -1502,6 +2229,7 @@ export function Scanner() {
               activeNode={activeNode}
               selectedId={selectedDefectId}
               snapshotPhoto={snapshot ? imageBlobRef.current : null}
+              analysisPhoto={analysisImage}
               engineers={engineers}
               onHover={setHoveredDefectId}
               onFocus={setFocusedDefectId}
@@ -1513,6 +2241,26 @@ export function Scanner() {
         </aside>
       </div>
 
+      {fullscreen && !snapshot ? (
+        <FullscreenCameraView
+          status={status}
+          error={error}
+          analysis={analysis}
+          activeDefectId={activeDefect?.id ?? null}
+          selectedDefectId={selectedDefectId}
+          frontCamera={frontCamera}
+          videoRef={videoRef}
+          streamRef={streamRef}
+          triggerRef={fullscreenTriggerRef}
+          onHover={setHoveredDefectId}
+          onFocus={setFocusedDefectId}
+          onSelect={setSelectedDefectId}
+          onToggleCamera={handleToggleCamera}
+          onRetry={() => void startCamera()}
+          onClose={() => setFullscreen(false)}
+        />
+      ) : null}
+
       <section className="border-t border-line" aria-label="Как это работает">
         <button
           type="button"
@@ -1522,11 +2270,11 @@ export function Scanner() {
           className="group flex w-full items-center justify-between gap-4 py-5 text-left"
         >
           <span className="flex items-start gap-4">
-            <span className="mt-1 font-mono text-[10px] tracking-[0.16em] text-accent">
+            <span className="mt-1 text-xs text-accent">
               04
             </span>
             <span>
-              <span className="block text-lg font-medium tracking-[-0.02em] text-ink">
+              <span className="block text-lg font-medium text-ink">
                 Как это работает
               </span>
               <span className="mt-1 block text-xs leading-5 text-faint">
@@ -1536,7 +2284,7 @@ export function Scanner() {
           </span>
 
           <span className="flex shrink-0 items-center gap-3 text-faint">
-            <span className="hidden font-mono text-[9px] uppercase tracking-[0.14em] sm:inline">
+            <span className="hidden text-xs sm:inline">
               {howItWorksOpen ? 'Свернуть' : 'Открыть'}
             </span>
             <ChevronDown

@@ -4,7 +4,10 @@ import os
 from pathlib import Path
 from PIL import Image, ImageDraw
 
-sys.path.insert(0, r"D:\hackaton_26")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+
+from app.config import settings
 
 from app.services.detector import defect_detector
 from app.services.llm_expert import llm_expert_service
@@ -27,7 +30,7 @@ def run():
     draw.ellipse([120, 120, 360, 320], fill=(160, 70, 20))
     # Линия сварного шва
     draw.rectangle([100, 450, 540, 480], fill=(30, 30, 30))
-    test_path = Path(r"D:\hackaton_26\static\uploads\sample_test.jpg")
+    test_path = settings.UPLOAD_DIR / "sample_test.jpg"
     test_img.save(test_path, format="JPEG")
 
     defects, annotated_path = defect_detector.detect(test_path)

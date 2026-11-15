@@ -4,7 +4,8 @@ import asyncio
 from pathlib import Path
 from PIL import Image, ImageDraw
 
-sys.path.insert(0, r"D:\hackaton_26")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 from fastapi import UploadFile
 from app.routers.equipment import get_equipment_list, get_equipment_detail, create_or_update_equipment

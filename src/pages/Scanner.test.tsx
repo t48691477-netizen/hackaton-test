@@ -5,13 +5,20 @@ import { AppRoutes } from '../App';
 import { RoleProvider } from '../context/RoleContext';
 import * as api from '../lib/api';
 import { MOCK_ENGINEERS } from '../lib/employees';
-import { createMockInspection, type Report } from '../lib/inspection';
+import {
+  MOCK_EQUIPMENT,
+  createMockInspection,
+  type DetailedAnalysisResult,
+  type EquipmentDetail,
+  type Report,
+} from '../lib/inspection';
 import { SESSION_STORAGE_KEY } from '../lib/session';
 
 const originalMediaDevices = navigator.mediaDevices;
 const originalPlay = HTMLMediaElement.prototype.play;
 const originalGetContext = HTMLCanvasElement.prototype.getContext;
 const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+const originalToBlob = HTMLCanvasElement.prototype.toBlob;
 const originalImage = window.Image;
 const originalFileReader = window.FileReader;
 const originalClipboard = navigator.clipboard;
@@ -20,6 +27,8 @@ const originalUseMock = api.API_CONFIG.useMock;
 const stopTrack = vi.fn();
 let inspectImageSpy: MockInstance<typeof api.inspectImage>;
 let createReportSpy: MockInstance<typeof api.createReport>;
+let equipmentSpy: MockInstance<typeof api.fetchEquipmentById>;
+let detailedAnalysisSpy: MockInstance<typeof api.requestDetailedAnalysis>;
 
 function savedReport(input: api.CreateReportInput): Report {
   const assignee =
@@ -123,6 +132,8 @@ beforeEach(() => {
   stopTrack.mockClear();
   inspectImageSpy = vi.spyOn(api, 'inspectImage');
   createReportSpy = vi.spyOn(api, 'createReport');
+  equipmentSpy = vi.spyOn(api, 'fetchEquipmentById');
+  detailedAnalysisSpy = vi.spyOn(api, 'requestDetailedAnalysis');
   Object.defineProperty(api.API_CONFIG, 'useMock', { configurable: true, value: true });
 
   Object.defineProperty(navigator, 'mediaDevices', {
@@ -147,6 +158,10 @@ beforeEach(() => {
   Object.defineProperty(HTMLCanvasElement.prototype, 'toDataURL', {
     configurable: true,
     value: vi.fn(() => 'data:image/jpeg;base64,mock'),
+  });
+  Object.defineProperty(HTMLCanvasElement.prototype, 'toBlob', {
+    configurable: true,
+    value: (callback: BlobCallback) => callback(new Blob(['frame'], { type: 'image/jpeg' })),
   });
 });
 
@@ -178,6 +193,10 @@ afterEach(() => {
     configurable: true,
     value: originalToDataURL,
   });
+  Object.defineProperty(HTMLCanvasElement.prototype, 'toBlob', {
+    configurable: true,
+    value: originalToBlob,
+  });
   Object.defineProperty(window, 'Image', {
     configurable: true,
     value: originalImage,
@@ -200,7 +219,7 @@ describe('веб-сканер', () => {
 
     const report = screen.getByRole('complementary', { name: 'Результат распознавания' });
     expect(within(report).getByText('Здесь появятся характеристики')).toBeInTheDocument();
-    expect(within(report).getByText(/После распознавания наведите курсор на дефект/)).toBeInTheDocument();
+    expect(within(report).getByText(/Наведите камеру на оборудование — распознавание начнётся само/)).toBeInTheDocument();
     expect(report.querySelector('[data-placeholder="equipment-specs"]')).not.toBeNull();
     expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
     expect(screen.getByRole('status')).toHaveTextContent('Распознавание активно');
@@ -248,6 +267,11 @@ describe('веб-сканер', () => {
     expect(
       await screen.findByText('Трещина корпуса', {}, { timeout: 3000 }),
     ).toBeInTheDocument();
+    const parameters = screen.getByRole('region', { name: 'Параметры realtime' });
+    expect(within(parameters).getByText('Утечка масла')).toBeInTheDocument();
+    expect(within(parameters).getByText('Ржавчина')).toBeInTheDocument();
+    expect(within(parameters).getByText('Плохой сварной шов')).toBeInTheDocument();
+    expect(within(parameters).getAllByText('Нет данных')).toHaveLength(3);
     expect(
       screen.getByText('Технические характеристики'),
     ).toBeInTheDocument();
@@ -283,14 +307,18 @@ describe('веб-сканер', () => {
 
     expect(screen.getByText('Активная зона')).toBeInTheDocument();
     expect(screen.getByText('Корпус насоса')).toBeInTheDocument();
-    expect(screen.getByText('Толщина стенки')).toBeInTheDocument();
+    expect(await screen.findByText('Толщина стенки')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
     expect(screen.getByText('мм')).toBeInTheDocument();
     const specs = screen.getByRole('region', { name: 'Технические характеристики' });
     expect(specs).toHaveAttribute('data-mock', 'equipment-specs');
     expect(specs).toHaveAttribute('data-node-id', 'node-housing');
+    expect(specs).toHaveAttribute('data-equipment-id', MOCK_EQUIPMENT.id);
     expect(within(specs).getByText('демо · mock')).toBeInTheDocument();
     expect(within(specs).getByText(/Демо-характеристики узла/)).toBeInTheDocument();
+    expect(within(specs).getByText('Паспорт оборудования')).toBeInTheDocument();
+    expect(within(specs).getByText('ПромМаш')).toBeInTheDocument();
+    expect(equipmentSpy).toHaveBeenCalledWith(MOCK_EQUIPMENT.id);
     expect(within(specs).queryByText(/Длина трещины|Глубина трещины|Площадь дефекта/i)).not.toBeInTheDocument();
 
     fireEvent.mouseLeave(defectRow);
@@ -301,6 +329,31 @@ describe('веб-сканер', () => {
     expect(within(specs).queryByText('Толщина стенки')).not.toBeInTheDocument();
   });
 
+  it('не меняет раскладку списка дефектов при выборе строки', async () => {
+    await startLiveWithTimers();
+    await advanceTime(500);
+
+    const firstRow = screen.getByRole('button', {
+      name: /^Дефект: Трещина корпуса, уверенность/i,
+    });
+    const secondRow = screen.getByRole('button', {
+      name: /^Дефект: Износ крепления, уверенность/i,
+    });
+    const firstRecommendation = firstRow.querySelector('[data-defect-recommendation]');
+    const secondRecommendation = secondRow.querySelector('[data-defect-recommendation]');
+
+    expect(firstRecommendation).toHaveAttribute('aria-hidden', 'true');
+    expect(secondRecommendation).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.mouseEnter(firstRow);
+    expect(firstRecommendation).toHaveAttribute('aria-hidden', 'false');
+    expect(secondRecommendation).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.mouseLeave(firstRow);
+    expect(firstRecommendation).toHaveAttribute('aria-hidden', 'true');
+    expect(secondRecommendation).toHaveAttribute('aria-hidden', 'true');
+  });
+
   it('показывает характеристики соответствующего узла при наведении на рамку', async () => {
     await startLiveWithTimers();
     await advanceTime(500);
@@ -308,6 +361,7 @@ describe('веб-сканер', () => {
     const frame = screen.getByRole('button', { name: /^Рамка дефекта: Износ крепления, уверенность/i });
     expect(frame).toHaveAttribute('aria-controls', 'equipment-specs-panel');
     fireEvent.mouseEnter(frame);
+    await act(async () => {});
 
     const specs = screen.getByRole('region', { name: 'Технические характеристики' });
     expect(specs).toHaveAttribute('data-node-id', 'node-mount');
@@ -366,9 +420,149 @@ describe('веб-сканер', () => {
     await advanceTime(500);
     expect(screen.getByRole('status')).toHaveTextContent('Снимок распознан');
     expect(screen.getByText('Трещина корпуса')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'более точный отчет' })).toBeEnabled();
     expect(inspectImageSpy).toHaveBeenCalledTimes(1);
     await advanceTime(5400);
     expect(inspectImageSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('показывает загрузку паспорта и затем загруженные характеристики', async () => {
+    const pending = deferred<EquipmentDetail>();
+    equipmentSpy.mockReturnValueOnce(pending.promise);
+    renderScanner();
+    await screen.findAllByText('Распознавание активно');
+
+    const frame = await screen.findByRole(
+      'button',
+      { name: /^Рамка дефекта: Трещина корпуса, уверенность/i },
+      { timeout: 3000 },
+    );
+    fireEvent.mouseEnter(frame);
+
+    const specs = screen.getByRole('region', { name: 'Технические характеристики' });
+    expect(within(specs).getByRole('status')).toHaveTextContent('Загружаем паспорт оборудования');
+    expect(equipmentSpy).toHaveBeenCalledWith(MOCK_EQUIPMENT.id);
+
+    await act(async () => pending.resolve(MOCK_EQUIPMENT));
+
+    expect(await screen.findByText('Паспорт оборудования')).toBeInTheDocument();
+    expect(screen.getByText('Толщина стенки')).toBeInTheDocument();
+    expect(screen.getByText('Производитель')).toBeInTheDocument();
+  });
+
+  it('показывает ошибку загрузки паспорта и позволяет повторить запрос', async () => {
+    equipmentSpy
+      .mockRejectedValueOnce(new Error('Каталог недоступен'))
+      .mockResolvedValueOnce(MOCK_EQUIPMENT);
+    renderScanner();
+    await screen.findAllByText('Распознавание активно');
+
+    const frame = await screen.findByRole(
+      'button',
+      { name: /^Рамка дефекта: Трещина корпуса, уверенность/i },
+      { timeout: 3000 },
+    );
+    fireEvent.mouseEnter(frame);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Каталог недоступен');
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку' }));
+
+    expect(await screen.findByText('Паспорт оборудования')).toBeInTheDocument();
+    expect(equipmentSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('не показывает поздний ответ после ухода указателя с дефекта', async () => {
+    const pending = deferred<EquipmentDetail>();
+    equipmentSpy.mockReturnValueOnce(pending.promise);
+    renderScanner();
+    await screen.findAllByText('Распознавание активно');
+
+    const frame = await screen.findByRole(
+      'button',
+      { name: /^Рамка дефекта: Трещина корпуса, уверенность/i },
+      { timeout: 3000 },
+    );
+    fireEvent.mouseEnter(frame);
+    fireEvent.mouseLeave(frame);
+
+    await act(async () => pending.resolve(MOCK_EQUIPMENT));
+
+    expect(screen.queryByText('Паспорт оборудования')).not.toBeInTheDocument();
+    expect(screen.getByText(/Наведите курсор на рамку дефекта или строку ниже/i)).toBeInTheDocument();
+  });
+
+  it('сохраняет характеристики нового узла при быстром переключении рамки', async () => {
+    const pending = deferred<EquipmentDetail>();
+    equipmentSpy.mockReturnValueOnce(pending.promise);
+    await startLiveWithTimers();
+    await advanceTime(500);
+
+    const housingFrame = screen.getByRole('button', {
+      name: /^Рамка дефекта: Трещина корпуса, уверенность/i,
+    });
+    const mountFrame = screen.getByRole('button', {
+      name: /^Рамка дефекта: Износ крепления, уверенность/i,
+    });
+    fireEvent.mouseEnter(housingFrame);
+    fireEvent.mouseLeave(housingFrame);
+    fireEvent.mouseEnter(mountFrame);
+
+    await act(async () => pending.resolve(MOCK_EQUIPMENT));
+
+    const specs = screen.getByRole('region', { name: 'Технические характеристики' });
+    expect(specs).toHaveAttribute('data-node-id', 'node-mount');
+    expect(within(specs).getByText('Момент затяжки')).toBeInTheDocument();
+    expect(within(specs).queryByText('Толщина стенки')).not.toBeInTheDocument();
+  });
+
+  it('показывает, что детальный backend пока не подключён', async () => {
+    renderScanner();
+    await uploadPhoto();
+    await screen.findByText('Трещина корпуса', {}, { timeout: 3000 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'более точный отчет' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Подробный анализ доступен после подключения backend.',
+    );
+    expect(detailedAnalysisSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('передаёт последний кадр и показывает ответ детального анализа', async () => {
+    renderScanner();
+    const image = await uploadPhoto();
+    await screen.findByText('Трещина корпуса', {}, { timeout: 3000 });
+    const inspection = inspectImageSpy.mock.results[0].value;
+    const result = await inspection;
+    const detail: DetailedAnalysisResult = {
+      analysis_id: 'detail-test',
+      inspection_id: result.inspection_id,
+      summary: 'Нужна проверка уплотнения.',
+      findings: [{
+        title: 'Следы масла',
+        description: 'Видна зона возможной утечки.',
+        severity: 'medium',
+        recommendation: 'Проверить уплотнение.',
+      }],
+      probable_causes: ['Износ уплотнения'],
+      recommendation_steps: ['Проверить уплотнение специалистом.'],
+      models: ['model-a', 'model-b'],
+      processing_ms: 1200,
+      analyzed_at: '2026-11-14T12:00:00Z',
+    };
+    detailedAnalysisSpy.mockResolvedValue(detail);
+    Object.defineProperty(api.API_CONFIG, 'useMock', { configurable: true, value: false });
+
+    fireEvent.click(screen.getByRole('button', { name: 'более точный отчет' }));
+
+    expect(detailedAnalysisSpy).toHaveBeenCalledWith({
+      image,
+      inspection: result,
+      conditionParameters: result.condition_parameters,
+    });
+    expect(await screen.findByText(detail.summary)).toBeInTheDocument();
+    expect(screen.getByText('Следы масла')).toBeInTheDocument();
+    expect(screen.getByText(/model-a, model-b/)).toBeInTheDocument();
   });
 
   it('не пропускает анализ фото, когда запрос предыдущего кадра ещё выполняется', async () => {

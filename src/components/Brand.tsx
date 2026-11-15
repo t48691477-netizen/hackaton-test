@@ -1,27 +1,20 @@
 import { Link } from 'react-router-dom';
 
-export function BrandMark({ className = 'h-5 w-5' }: { className?: string }) {
+export function BrandLockup({ className = '' }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 28 28"
-      fill="none"
-      className={className}
-      aria-hidden="true"
-    >
-      <path
-        d="M2 9V2h7M26 9V2h-7M2 19v7h7M26 19v7h-7"
-        stroke="currentColor"
-        strokeWidth="1.4"
+    <span className={`inline-flex items-center gap-3 ${className}`}>
+      <img
+        src="/kst-energo-logo.svg"
+        alt="КСТ Энерго"
+        className="h-7 w-auto shrink-0"
+        width={118}
+        height={28}
       />
-      <rect
-        x="10"
-        y="10"
-        width="8"
-        height="8"
-        stroke="currentColor"
-        strokeWidth="1.1"
-      />
-    </svg>
+      <span className="h-6 w-px shrink-0 bg-line-strong" aria-hidden="true" />
+      <span className="text-[17px] font-semibold leading-none text-ink">
+        ПромСкан
+      </span>
+    </span>
   );
 }
 
@@ -36,20 +29,10 @@ export function Brand({ to = '/scanner', onClick, className = '' }: BrandProps) 
     <Link
       to={to}
       onClick={onClick}
-      className={`group inline-flex items-center gap-3 rounded-sm transition-colors ${className}`}
-      aria-label="ПромСкан — на главную"
+      className={`inline-flex min-h-11 items-center rounded-lg ${className}`}
+      aria-label="ПромСкан, КСТ Энерго — на главную"
     >
-      <span className="grid h-9 w-9 shrink-0 place-items-center border border-line-strong text-accent transition-colors duration-150 group-hover:border-accent/60">
-        <BrandMark />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[15px] font-semibold leading-none tracking-[0.045em] text-ink">
-          ПРОМСКАН
-        </span>
-        <span className="mt-1.5 block font-mono text-[9px] uppercase leading-none tracking-[0.22em] text-faint">
-          industrial vision
-        </span>
-      </span>
+      <BrandLockup />
     </Link>
   );
 }

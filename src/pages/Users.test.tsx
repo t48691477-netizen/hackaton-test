@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -77,6 +77,7 @@ describe('страница сотрудников', () => {
     expect(document.body).not.toHaveTextContent(message.accessKey);
 
     await user.click(within(keyDialog).getByRole('button', { name: 'Готово' }));
+    expect(screen.getByRole('button', { name: /Добавить сотрудника/ })).toHaveFocus();
     expect(screen.getByText('Пётр Сидоров')).toBeInTheDocument();
     expect(screen.getByText('p.sidorov@promscan.ru')).toBeInTheDocument();
     expect(screen.queryByText(message.accessKey)).not.toBeInTheDocument();
@@ -137,13 +138,52 @@ describe('страница сотрудников', () => {
     const user = userEvent.setup();
     renderUsers();
 
-    await user.click(
-      screen.getByRole('button', { name: /Добавить сотрудника/ }),
-    );
+    const trigger = screen.getByRole('button', { name: /Добавить сотрудника/ });
+    await user.click(trigger);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('удерживает фокус в форме создания сотрудника', async () => {
+    const user = userEvent.setup();
+    renderUsers();
+
+    await user.click(screen.getByRole('button', { name: /Добавить сотрудника/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Добавление сотрудника' });
+    const closeButton = within(dialog).getByRole('button', { name: 'Закрыть окно' });
+    const submitButton = within(dialog).getByRole('button', { name: 'Создать и отправить ключ' });
+
+    expect(within(dialog).getByLabelText('ФИО')).toHaveFocus();
+    submitButton.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(closeButton).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(submitButton).toHaveFocus();
+  });
+
+  it('удерживает фокус и возвращает его на кнопку перевыпуска', async () => {
+    const user = userEvent.setup();
+    renderUsers();
+    const reissueButton = screen.getAllByRole('button', { name: /Перевыпустить/ })[0];
+    await user.click(reissueButton);
+
+    const dialog = await screen.findByRole('dialog');
+    const closeButton = within(dialog).getByRole('button', { name: 'Закрыть окно' });
+    const doneButton = within(dialog).getByRole('button', { name: 'Готово' });
+
+    expect(closeButton).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(doneButton).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(closeButton).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(reissueButton).toHaveFocus();
   });
 
   it('не показывает ключ в таблице и перевыпускает его', async () => {

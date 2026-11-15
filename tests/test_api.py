@@ -13,8 +13,21 @@ from PIL import Image, ImageDraw
 from starlette.testclient import TestClient
 
 # Добавляем путь проекта
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.main import app
+from app.routers.auth import require_scan, require_dispatch, require_users
+from app.schemas.auth import AuthAccount
+
+_mock_account = AuthAccount(
+    id="emp-test",
+    full_name="Test Engineer",
+    email="test@example.com",
+    role="director",
+    permissions=["scan", "dispatch", "users"]
+)
+app.dependency_overrides[require_scan] = lambda: _mock_account
+app.dependency_overrides[require_dispatch] = lambda: _mock_account
+app.dependency_overrides[require_users] = lambda: _mock_account
 
 client = TestClient(app)
 
@@ -22,7 +35,7 @@ def test_full_pipeline():
     print("=== 1. Проверка корневого эндпоинта и Swagger docs ===")
     r = client.get("/")
     assert r.status_code == 200, f"Root error: {r.text}"
-    print("Root response:", r.json())
+    print("Root response status:", r.status_code)
 
     r_docs = client.get("/docs")
     assert r_docs.status_code == 200, "Swagger UI не доступен!"

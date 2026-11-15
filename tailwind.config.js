@@ -18,6 +18,7 @@ export default {
         accent: 'rgb(var(--accent) / <alpha-value>)',
         'accent-hi': 'rgb(var(--accent-hi) / <alpha-value>)',
         'accent-ink': 'rgb(var(--accent-ink) / <alpha-value>)',
+        hero: 'rgb(var(--hero) / <alpha-value>)',
         ok: 'rgb(var(--ok) / <alpha-value>)',
         warn: 'rgb(var(--warn) / <alpha-value>)',
         danger: 'rgb(var(--danger) / <alpha-value>)',
@@ -25,7 +26,8 @@ export default {
       },
       fontFamily: {
         sans: [
-          'IBM Plex Sans',
+          'Geologica Variable',
+          'Geologica',
           'Segoe UI',
           'system-ui',
           '-apple-system',
@@ -34,18 +36,22 @@ export default {
         ],
         mono: ['IBM Plex Mono', 'Cascadia Mono', 'Consolas', 'ui-monospace', 'monospace'],
       },
+      fontSize: {
+        xs: ['0.8125rem', '1rem'],
+        sm: ['0.9375rem', '1.25rem'],
+      },
       borderRadius: {
         none: '0',
-        sm: '1px',
-        DEFAULT: '2px',
-        md: '2px',
-        lg: '4px',
-        xl: '6px',
+        sm: '6px',
+        DEFAULT: '8px',
+        md: '10px',
+        lg: '12px',
+        xl: '20px',
         full: '9999px',
       },
       boxShadow: {
-        panel: '0 1px 2px rgb(27 26 24 / 0.04)',
-        sheet: '-24px 0 64px rgb(27 26 24 / 0.14)',
+        panel: '0 1px 2px rgb(49 49 50 / 0.04)',
+        sheet: '-24px 0 64px rgb(49 49 50 / 0.14)',
       },
       keyframes: {
         'page-in': {

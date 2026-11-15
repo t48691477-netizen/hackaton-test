@@ -12,7 +12,7 @@ import {
   UserRound,
   Wrench,
 } from 'lucide-react';
-import { BrandMark } from '../components/Brand';
+import { BrandLockup } from '../components/Brand';
 import {
   API_CONFIG,
   fetchReportById,
@@ -283,24 +283,12 @@ export function Task() {
       data-mock={API_CONFIG.useMock ? 'task' : undefined}
       data-api="GET /api/reports/{id}"
     >
-      <div className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col border-line bg-panel sm:min-h-[calc(100dvh-4rem)] sm:border">
+      <div className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col overflow-hidden border-line bg-panel sm:rounded-xl sm:min-h-[calc(100dvh-4rem)] sm:border">
         <div className="h-0.5 w-full bg-accent" aria-hidden="true" />
 
         <header className="border-b border-line px-5 pb-6 pt-5 sm:px-7">
           <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center border border-line-strong text-accent">
-                <BrandMark />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[13px] font-semibold leading-none tracking-[0.055em] text-ink">
-                  ПРОМСКАН
-                </span>
-                <span className="mt-1.5 block font-mono text-[8px] uppercase leading-none tracking-[0.2em] text-faint">
-                  mobile task
-                </span>
-              </span>
-            </div>
+            <BrandLockup />
 
             {report ? (
               <StatusTag status={report.status} />
@@ -313,7 +301,7 @@ export function Task() {
 
           <div className="mt-8 border-t border-line pt-5">
             <p className="eyebrow">Мобильное рабочее место</p>
-            <h1 className="mt-2 text-[1.9rem] font-medium leading-[1.05] tracking-[-0.045em] text-ink">
+            <h1 className="mt-2 text-[1.9rem] font-medium leading-[1.05] text-ink">
               Задание сотруднику
             </h1>
           </div>
@@ -346,7 +334,7 @@ export function Task() {
                   aria-hidden="true"
                 />
                 <div>
-                  <h2 className="text-lg font-medium tracking-[-0.02em] text-ink">
+                  <h2 className="text-lg font-medium text-ink">
                     {loadError.notFound
                       ? 'Задача не найдена'
                       : 'Не удалось загрузить задание'}
@@ -373,7 +361,7 @@ export function Task() {
 
               <div className="flex items-center justify-between gap-4 border-b border-line pb-4">
                 <span className="technical">ID задачи</span>
-                <code className="font-mono text-xs text-soft">{report.id}</code>
+                <code className="text-xs text-soft">{report.id}</code>
               </div>
 
               <div className="mt-6 space-y-7">
@@ -384,11 +372,11 @@ export function Task() {
                   <h2 id="task-equipment-heading" className="technical">
                     Оборудование
                   </h2>
-                  <p className="mt-3 text-xl font-medium leading-tight tracking-[-0.025em] text-ink">
+                  <p className="mt-3 text-xl font-medium leading-tight text-ink">
                     {report.result.equipment.name}
                   </p>
                   <div className="mt-3 space-y-2 text-sm text-muted">
-                    <p className="font-mono text-xs text-soft">
+                    <p className="text-xs text-soft">
                       Инв. № {report.result.equipment.inventory_number}
                     </p>
                     <p className="flex items-start gap-2">
@@ -408,7 +396,7 @@ export function Task() {
                     </h2>
                     {primaryDefect ? (
                       <span
-                        className={`inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] ${SEVERITY_META[primaryDefect.severity].text}`}
+                        className={`inline-flex items-center gap-2 text-xs ${SEVERITY_META[primaryDefect.severity].text}`}
                       >
                         <span
                           className={`h-1.5 w-1.5 shrink-0 ${SEVERITY_META[primaryDefect.severity].dot}`}
@@ -424,7 +412,7 @@ export function Task() {
                       <p className="text-base font-medium text-ink">
                         {primaryDefect.label}
                       </p>
-                      <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
+                      <p className="mt-2 text-xs text-faint">
                         Уверенность ·{' '}
                         {Math.round(primaryDefect.confidence * 100)}%
                       </p>
@@ -468,8 +456,8 @@ export function Task() {
                           key={`${index}-${step}`}
                           className="flex gap-4 py-3"
                         >
-                          <span className="shrink-0 font-mono text-[10px] leading-6 tracking-[0.1em] text-accent tabular">
-                            {String(index + 1).padStart(2, '0')}
+                          <span className="shrink-0 text-xs leading-6 text-accent tabular">
+                            {index + 1}
                           </span>
                           <p className="text-sm leading-6 text-soft">{step}</p>
                         </li>
@@ -490,7 +478,7 @@ export function Task() {
                   {report.assignee ? (
                     <div className="mt-3 flex items-center gap-3">
                       <span
-                        className="grid h-10 w-10 shrink-0 place-items-center border border-line bg-canvas font-mono text-[10px] font-medium tracking-[0.08em] text-soft"
+                        className="grid h-10 w-10 shrink-0 place-items-center border border-line bg-canvas text-xs font-medium text-soft"
                         aria-hidden="true"
                       >
                         {getInitials(report.assignee.full_name)}
@@ -499,7 +487,7 @@ export function Task() {
                         <p className="text-sm font-medium text-ink">
                           {report.assignee.full_name}
                         </p>
-                        <p className="mt-1 font-mono text-[9px] tracking-[0.1em] text-faint">
+                        <p className="mt-1 text-xs text-faint">
                           {report.assignee.id}
                         </p>
                       </div>
@@ -522,7 +510,7 @@ export function Task() {
                     <h2 id="task-timeline-heading" className="technical">
                       Хронология
                     </h2>
-                    <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+                    <span className="text-xs text-faint">
                       UTC
                     </span>
                   </div>
@@ -538,7 +526,7 @@ export function Task() {
                         className="flex items-center justify-between gap-4 py-3"
                       >
                         <dt className="text-sm text-muted">{item.label}</dt>
-                        <dd className="font-mono text-xs text-soft tabular">
+                        <dd className="text-xs text-soft tabular">
                           {item.value ? (
                             <time
                               dateTime={item.value}
@@ -568,7 +556,7 @@ export function Task() {
                       <div>
                         <h2
                           id="task-completed-heading"
-                          className="text-lg font-medium tracking-[-0.02em] text-ink"
+                          className="text-lg font-medium text-ink"
                         >
                           Задача выполнена
                         </h2>
@@ -683,7 +671,7 @@ export function Task() {
                         />
                         <p
                           id="task-comment-hint"
-                          className="mt-2 text-[11px] leading-5 text-faint"
+                          className="mt-2 text-xs leading-5 text-faint"
                         >
                           Необязательно. Комментарий увидят диспетчер и
                           директор.
@@ -742,7 +730,7 @@ export function Task() {
         </main>
 
         <footer className="border-t border-line px-5 py-4 sm:px-7">
-          <div className="flex items-center justify-between gap-4 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
+          <div className="flex items-center justify-between gap-4 text-xs text-faint">
             <span>PSC-02 · мобильное приложение</span>
             <span>{API_CONFIG.useMock ? 'Демо' : 'API'}</span>
           </div>
