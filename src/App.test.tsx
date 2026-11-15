@@ -1,9 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppRoutes } from './App';
 import { RoleProvider } from './context/RoleContext';
+import { API_CONFIG } from './lib/api';
 import type { Role } from './lib/roles';
 
 function renderApp(role: Role | string | null, route = '/defects') {
@@ -23,6 +24,28 @@ function getMainNav() {
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+  Object.defineProperty(API_CONFIG, 'useMock', { configurable: true, value: true });
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith('/api/auth/login')) {
+      const { access_key: accessKey } = JSON.parse(String(init?.body)) as { access_key: string };
+      const accounts = {
+        PSCDRT2345: { id: 'director', full_name: 'Генеральный директор', email: 'director@promscan.example', role: 'director' },
+        PSCDSP4826: { id: 'emp-001', full_name: 'Иван Иванов', email: 'i.ivanov@promscan.ru', role: 'dispatcher' },
+        PSCENG5542: { id: 'emp-002', full_name: 'Алексей Смирнов', email: 'a.smirnov@promscan.ru', role: 'engineer' },
+      } as const;
+      const account = accounts[accessKey as keyof typeof accounts];
+      return account
+        ? new Response(JSON.stringify({ session_token: 'test-token', expires_at: '2026-11-15T18:00:00Z', account }), { status: 200 })
+        : new Response(JSON.stringify({ detail: 'Ключ не подошёл.' }), { status: 401 });
+    }
+    if (url.endsWith('/api/users')) return new Response('[]', { status: 200 });
+    return new Response('{}', { status: 404 });
+  }));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('динамическое меню по ролям', () => {
@@ -64,7 +87,7 @@ describe('динамическое меню по ролям', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('директор открывает таблицу сотрудников по /users', () => {
+  it('директор открывает таблицу сотрудников по /users', async () => {
     renderApp('director', '/users');
 
     expect(
@@ -73,7 +96,7 @@ describe('динамическое меню по ролям', () => {
     expect(
       screen.getByRole('button', { name: /Добавить сотрудника/ }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(await screen.findByRole('table')).toBeInTheDocument();
   });
 
   it('администратор видит сотрудников, но не создаёт администратора', async () => {

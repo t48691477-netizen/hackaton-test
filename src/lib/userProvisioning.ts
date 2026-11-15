@@ -15,7 +15,14 @@ import {
   toInvitationState,
   type AccessKeyEmailResult,
 } from './email';
-import type { Employee, EmployeeRole } from './employees';
+import {
+  findEmployeeById,
+  toEmployeeAccount,
+  type Employee,
+  type EmployeeAccount,
+  type EmployeeRole,
+} from './employees';
+import { API_CONFIG, createEmployee, reissueEmployee } from './api';
 import { ROLE_LABELS } from './roles';
 
 export interface NewEmployeeInput {
@@ -25,8 +32,10 @@ export interface NewEmployeeInput {
 }
 
 export interface ProvisionedEmployee {
-  employee: Employee;
+  employee: EmployeeAccount;
   invitation: AccessKeyEmailResult;
+  /** Локальный снимок нужен только mock-режиму для сохранения PBKDF2-данных. */
+  localEmployee?: Employee;
 }
 
 function createEmployeeId(): string {
@@ -75,6 +84,10 @@ async function deliverKey(
 export async function provisionEmployee(
   input: NewEmployeeInput,
 ): Promise<ProvisionedEmployee> {
+  if (!API_CONFIG.useMock) {
+    return createEmployee(input);
+  }
+
   const record = await createAccessKeyRecord();
   const email = normalizeEmail(input.email);
   const employee: Employee = {
@@ -90,15 +103,28 @@ export async function provisionEmployee(
 
   const invitation = await deliverKey(employee, record.accessKey);
 
-  return { employee, invitation };
+  return {
+    employee: toEmployeeAccount(employee),
+    invitation,
+    localEmployee: employee,
+  };
 }
 
 export async function reissueEmployeeAccess(
-  employee: Employee,
+  employee: EmployeeAccount,
 ): Promise<ProvisionedEmployee> {
+  if (!API_CONFIG.useMock) {
+    return reissueEmployee(employee.id);
+  }
+
+  const localEmployee = findEmployeeById(employee.id);
+  if (!localEmployee) {
+    throw new Error('Сотрудник не найден в демо-справочнике.');
+  }
+
   const record = await createAccessKeyRecord();
   const nextEmployee: Employee = {
-    ...employee,
+    ...localEmployee,
     keySalt: record.keySalt,
     keyHash: record.keyHash,
     keyCreatedAt: record.keyCreatedAt,
@@ -107,5 +133,9 @@ export async function reissueEmployeeAccess(
 
   const invitation = await deliverKey(nextEmployee, record.accessKey);
 
-  return { employee: nextEmployee, invitation };
+  return {
+    employee: toEmployeeAccount(nextEmployee),
+    invitation,
+    localEmployee: nextEmployee,
+  };
 }

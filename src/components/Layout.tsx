@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useRole } from '../context/RoleContext';
+import { logout } from '../lib/api';
 import { useFocusTrap } from '../lib/useFocusTrap';
 import {
   ROLE_LABELS,
@@ -218,6 +219,11 @@ export function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
 
+  const handleLogout = async () => {
+    await logout();
+    clearRole();
+  };
+
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
@@ -366,7 +372,7 @@ export function Layout() {
             <button
               ref={mobileTriggerRef}
               type="button"
-              onClick={clearRole}
+              onClick={() => void handleLogout()}
               className="btn-icon hidden border-0 sm:inline-flex"
               aria-label="Выйти"
               title="Выйти"
@@ -414,7 +420,7 @@ export function Layout() {
           accountName={session?.fullName ?? ROLE_LABELS[role]}
           triggerRef={mobileTriggerRef}
           onClose={() => setMobileOpen(false)}
-          onLogout={clearRole}
+          onLogout={() => void handleLogout()}
         />
       ) : null}
     </div>

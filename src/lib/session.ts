@@ -3,8 +3,8 @@
  *
  * sessionStorage выбран намеренно: новая вкладка не наследует вход и снова
  * просит ключ. Это ближе к требованию «при открытии новой вкладки запрашивается
- * ключ», чем localStorage. В production сессию выдаёт сервер в HttpOnly
- * Secure SameSite-cookie; клиентский sessionStorage — только демо.
+ * ключ», чем localStorage. В real API mode серверный bearer token хранится
+ * здесь на время вкладки и передаётся через Authorization header.
  */
 
 import { isRole, type Role } from './roles';
@@ -18,6 +18,13 @@ export interface Session {
   email: string;
   role: Role;
   issuedAt: string;
+  /**
+   * Опциональный токен для API-клиентов без cookie-сессии. В production
+   * предпочтительнее HttpOnly-cookie, поэтому старые сессии без поля токена
+   * остаются валидными.
+   */
+  sessionToken?: string;
+  expiresAt?: string;
 }
 
 function storageOrNull(): Storage | null {
@@ -58,6 +65,12 @@ export function getStoredSession(
       email: session.email,
       role: session.role,
       issuedAt: session.issuedAt,
+      ...(typeof session.sessionToken === 'string' && session.sessionToken
+        ? { sessionToken: session.sessionToken }
+        : {}),
+      ...(typeof session.expiresAt === 'string' && session.expiresAt
+        ? { expiresAt: session.expiresAt }
+        : {}),
     };
   } catch {
     return null;

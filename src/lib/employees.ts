@@ -19,20 +19,50 @@ export type InvitationStatus = 'not_sent' | 'queued' | 'sent' | 'failed';
 export interface InvitationState {
   status: InvitationStatus;
   email: string;
-  provider: 'mock' | 'smtp' | null;
+  provider: 'mock' | 'smtp' | 'gmail' | null;
   sentAt: string | null;
   error: string | null;
 }
 
-export interface Employee {
+/** Поля учётной записи, которые доступны странице управления сотрудниками. */
+export interface EmployeeAccount {
   id: string;
   fullName: string;
   email: string;
   role: EmployeeRole;
+  keyCreatedAt: string | null;
+  invitation: InvitationState;
+}
+
+/** Локальная mock-запись дополнительно содержит PBKDF2-материал ключа. */
+export interface Employee extends EmployeeAccount {
   keySalt: string;
   keyHash: string;
   keyCreatedAt: string;
-  invitation: InvitationState;
+}
+
+export function isLocalEmployee(
+  employee: EmployeeAccount,
+): employee is Employee {
+  const candidate = employee as Partial<Employee>;
+
+  return (
+    typeof candidate.keySalt === 'string' &&
+    typeof candidate.keyHash === 'string' &&
+    typeof candidate.keyCreatedAt === 'string'
+  );
+}
+
+/** Безопасный снимок локальной записи без соли и хеша ключа. */
+export function toEmployeeAccount(employee: Employee): EmployeeAccount {
+  return {
+    id: employee.id,
+    fullName: employee.fullName,
+    email: employee.email,
+    role: employee.role,
+    keyCreatedAt: employee.keyCreatedAt,
+    invitation: { ...employee.invitation },
+  };
 }
 
 /** Безопасный снимок сотрудника внутри Report. */

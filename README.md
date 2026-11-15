@@ -83,9 +83,10 @@ npm run build
 npm audit
 ```
 
-Запуск серверной части для демо **не нужен**. Переключение на будущий API
-описано в разделе 7; один флаг окружения не подключает сотрудников,
-аутентификацию и панель дефектов автоматически.
+Запуск backend для mock-режима **не нужен**. Для real mode задайте
+`VITE_API_BASE_URL` и `VITE_USE_MOCK_API=false`; вход, список сотрудников,
+создание, ротация ключа и удаление используют защищённый `/api` backend.
+Маршруты отчётов и оборудования сохраняют существующие frontend-контракты.
 
 ---
 
@@ -186,8 +187,9 @@ Argon2id-хеш и отправляет письмо через SMTP/Gmail API. 
   Новый ответ заменяет список целиком: обнаруженная зона появляется,
   исчезнувшая удаляется. Подробности и сценарий проверки — ниже.
 - Кнопка «более точный отчет» отправляет сохранённый кадр, текущий
-  `InspectionResult` и параметры через предложенный `POST /api/inspect/detailed`.
-  Backend ещё не подключён, поэтому mock не подставляет выдуманный отчёт.
+  `InspectionResult` и его `condition_parameters` через предложенный
+  `POST /api/inspect/detailed`. Backend ещё не подключён; mock возвращает
+  `501` и не подставляет выдуманный отчёт.
 - Наведение курсором или клавиатурный фокус на рамку/строку дефекта справа
   загружает `GET /api/equipment/{id}` через `fetchEquipmentById()` из
   `src/lib/api.ts`. Карточка показывает паспорт оборудования и `specs` узла,
@@ -306,8 +308,8 @@ Argon2id-хеш и отправляет письмо через SMTP/Gmail API. 
 `src/lib/api.ts` уже выбирает HTTP-ветку; дополнительный аргумент
 `inspectImage(..., { live: true })` управляет **только mock-сценарием** и не
 попадает в multipart. В real-режиме по-прежнему отправляются только `file`
-и `equipment_id`. `condition_parameters` сохранены в типах, отчётах и запросе
-детального анализа, но не определяют состав realtime-списка. Не включать
+и `equipment_id`. `condition_parameters` сохраняются в результатах обычной
+инспекции и отчётах, но не определяют состав realtime-списка. Не включать
 `VITE_USE_MOCK_API=false` до реализации и проверки сервиса. Точные правила —
 в [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md), «Список дефектов текущего кадра».
 
@@ -317,7 +319,10 @@ Argon2id-хеш и отправляет письмо через SMTP/Gmail API. 
 
 ### Сотрудники
 
-- Таблица: ФИО, Email, Роль, Ключ доступа. Колонки «Статус» нет.
+- Список загружается через `GET /api/users`; mock-режим читает общий демо-
+  справочник. Desktop показывает таблицу, узкие экраны — карточки.
+- Показываются ФИО, Email, Роль, ключевая дата, приглашение и действия;
+  колонки «Статус» нет.
 - Добавление сотрудника в боковой панели, фиксированный футер.
 - Роль выбирается из `admin / dispatcher / engineer`; администратора может
   создать только директор.
@@ -327,9 +332,12 @@ Argon2id-хеш и отправляет письмо через SMTP/Gmail API. 
   в очереди» без самого ключа. Демо-письмо лежит в mock-outbox (см. выше).
 - Ключи администраторов перевыпускает только директор; администратор может
   перевыпускать диспетчеров и рабочих.
+- Real-режим вызывает `POST /api/users`,
+  `POST /api/users/{id}/reissue-key` и `DELETE /api/users/{id}`. Удаление
+  требует подтверждения в диалоге с управлением клавиатурным фокусом.
 - Для каждого сотрудника показывается статус письма: «отправлено», «в
   очереди», «не отправлено» или «не отправлялось».
-- Четыре начальные записи и добавленные сотрудники живут в общем демо-
+- В mock-режиме четыре начальные записи и добавленные сотрудники живут в общем демо-
   справочнике `src/lib/employees.ts` и `localStorage`
   (`promscan:employees:v2`), поэтому переживают перезагрузку страницы.
 - Исполнители задач выбираются из этого же справочника через `getEngineers()`,
@@ -337,8 +345,10 @@ Argon2id-хеш и отправляет письмо через SMTP/Gmail API. 
 - Сотрудники, созданные в UI, существуют только в браузере, где их создали.
   Для проверки на телефоне и в другом браузере используйте seed-ключи из
   раздела 1.
-- Реальная выдача учётных записей, отправка писем и серверный вход не
-  реализованы: это заготовки, описанные в разделах 5–7.
+- Backend отсутствует в checkout. Успешный `DELETE` убирает запись из
+  активного списка; backend должен подтвердить, что endpoint деактивирует
+  пользователя и отзывает доступ, а не физически удаляет запись.
+- Реальная отправка писем и серверный вход остаются задачами backend.
 
 ### Дефекты
 
@@ -464,7 +474,7 @@ Argon2id-хеш и отправляет письмо через SMTP/Gmail API. 
 | 14 | Жизненный цикл задачи и исполнители | `src/lib/api.ts` → `updateReportStatus()`, `fetchReportById()`; `src/pages/Task.tsx`; `src/pages/Defects.tsx` | Статусы `open → in_progress → closed`, исполнитель и даты приходят из `Report`; mock меняет задачу локально, real отправляет `PATCH /api/reports/{id}/status` | `GET /api/reports/{id}`, `PATCH /api/reports/{id}/status`; исполнитель в real-режиме — из серверной сессии | готова |
 | 15 | Создание и передача задачи | `src/lib/api.ts` → `createReport()`; `src/pages/Scanner.tsx` → `ReportCreateForm` | Форма «Передача задачи» выбирает исполнителя, создаёт `open`-задачу; mock пишет в `localStorage`, real отправляет multipart с `assignee_id` | `POST /api/reports` (`multipart/form-data`) | готова |
 | 16 | Фото акта | `src/lib/inspection.ts` → `MOCK_REPORTS[].photo_url`, тип `Report`; `src/lib/api.ts` → `createReport()` | `photo_url = null`; реальная ветка умеет передать `photo`, хранения и выдачи URL нет | Серверная загрузка в S3/MinIO, URL в ответе `POST /api/reports` | частично |
-| 17 | Сотрудники и их создание | `src/lib/employees.ts` → `MOCK_EMPLOYEES`, `loadEmployees()`, `saveEmployees()`; `src/lib/userProvisioning.ts` → `provisionEmployee()` | Справочник и приглашения в `localStorage` (`promscan:employees:v2`); дубликаты и роли проверяются на клиенте | Будущий `/api/users` — **не входит в текущее ТЗ backend**, нужен отдельный контракт | частично |
+| 17 | Сотрудники и их создание | `src/lib/employees.ts` → `MOCK_EMPLOYEES`, `loadEmployees()`, `saveEmployees()`; `src/lib/userProvisioning.ts` → `provisionEmployee()`; `src/lib/api.ts` → employee adapters | Mock-справочник и приглашения в `localStorage`; real-ветка вызывает employee API, но backend отсутствует | Реализация `GET/POST /api/users`, reissue и DELETE на backend | частично |
 | 18 | Генерация ключа доступа | `src/lib/accessKeys.ts` → `createAccessKeyRecord()`, `ACCESS_KEY_ALPHABET` | 10 символов из `A-HJ-NP-Z2-9`, `crypto.getRandomValues`, PBKDF2-SHA-256 (120 000 итераций); открытый ключ не сохраняется | Серверная генерация, Argon2id, rate limiting, аудит выдачи/перевыпуска | готова |
 | 19 | Хранение, показ и перевыпуск ключей | `src/lib/accessKeys.ts` → `AccessKeyRecord`; `src/lib/userProvisioning.ts` → `reissueEmployeeAccess()`; `src/pages/Users.tsx` → `KeyDeliveryDialog` | В таблице только маска; ключ администратору не показывается, уходит в mock-email; старый хеш заменяется | Сервер хранит только Argon2id-хеш, отправляет ключ письмом и отзывает сессии; ответ без `access_key` | частично |
 | 20 | Вход по ключу | `src/lib/access.ts` → `authenticateAccessKey()`; `src/components/Unauthorized.tsx` → `handleSubmit()` | Локальный перебор аккаунтов и проверка PBKDF2; сессия создаётся в браузере | `POST /api/auth/login`, серверная проверка ключа/хеша, HttpOnly-сессия, rate limiting | готова |
@@ -475,7 +485,7 @@ Argon2id-хеш и отправляет письмо через SMTP/Gmail API. 
 | 25 | Операционные индикаторы | `src/components/Layout.tsx` → `Layout` («Система в норме»); `src/pages/Defects.tsx` → `Defects` («Смена 2»); `src/pages/Scanner.tsx` → `Scanner` («CAM 01», «1280 × 720») | Статические подписи, не healthcheck, не данные смены и не измеренное разрешение | Сервис состояния/смен (пока вне контракта), реальные параметры камеры из браузера | частично |
 | 26 | Демо-маркеры и обещания приватности | `src/lib/inspection.ts` → `DEMO_META` (сейчас не используется); `src/pages/Scanner.tsx` → `CameraGuide`, `HowItWorksContent`, `EmptyReport`; `src/components/Layout.tsx` → `Layout`; `src/components/Unauthorized.tsx` → `Unauthorized` | Часть текстов безусловно говорит «демо», «на устройстве», «данные не покидают браузер»; флаг их не обновляет | Реальные `meta.vision_mode`/`meta.llm_mode` и политика передачи/хранения снимков | частично |
 | 29 | Письмо с ключом и кодом подтверждения | `src/lib/email.ts` → `sendAccessKeyEmail()`, `readMockOutbox()`; `src/pages/Users.tsx` → `KeyDeliveryDialog`, `InvitationLine` | Письмо не отправляется: возвращается `queued`, текст письма с ключом и кодом лежит в mock-outbox; статус приглашения виден в таблице; ключ в UI не показывается | `POST /api/users` и `POST /api/users/{id}/reissue-key`; SMTP/Gmail API, одноразовый код, журнал доставки, повторная отправка | частично |
-| 30 | Права и роли из ключа | `src/lib/roles.ts` → `ROLE_PERMISSIONS`; `src/lib/access.ts` → `listAuthAccounts()` | `director/admin` видят сотрудников, `dispatcher` — сканер и дефекты, `engineer` — только сканер; проверка на клиенте | Серверный RBAC: роль и права берутся из аккаунта ключа, а не из запроса | частично |
+| 30 | Права и роли из ключа | `src/lib/roles.ts` → `ROLE_PERMISSIONS`; `src/lib/access.ts` → `listAuthAccounts()` | UI ограничивает маршруты и действия; запросы сотрудников используют cookie credentials и optional Bearer | Серверный RBAC: роль и права берутся из аккаунта ключа, а не из запроса | частично |
 
 Поиск по `src` выполнен по словам `mock`, `демо`, `заглушк`, `TODO`, `FIXME`,
 включая файлы, попавшие под правила игнорирования Git. `TODO`/`FIXME` не
@@ -510,6 +520,7 @@ Argon2id-хеш и отправляет письмо через SMTP/Gmail API. 
 | GET | `/api/equipment/{id}` | → `EquipmentDetail` с узлами и `specs` | 200 |
 | POST | `/api/equipment` | JSON `EquipmentUpsert` → `EquipmentDetail` | 201 создание / 200 обновление |
 | POST | `/api/inspect` | multipart с фото → `InspectionResult` с `Defect[]`, LLM и `meta` | 200 |
+| POST | `/api/inspect/detailed` | multipart `file`, `inspection`, `condition_parameters` → `DetailedAnalysisResult` | 200 |
 | POST | `/api/reports` | multipart с результатом осмотра и `assignee_id` → `Report` | 201 |
 | GET | `/api/reports` | query `status` опционален → `Report[]` | 200 |
 | GET | `/api/reports/{id}` | → `Report` для карточки `/task/{id}` | 200 |
@@ -519,6 +530,7 @@ Argon2id-хеш и отправляет письмо через SMTP/Gmail API. 
 | GET | `/api/auth/me` | текущий `AuthAccount` | 200 |
 | GET/POST | `/api/users` | список / создание сотрудника и ключа | 200 / 201 |
 | POST | `/api/users/{id}/reissue-key` | новый ключ, старый инвалидируется | 200 |
+| DELETE | `/api/users/{id}` | деактивация сотрудника и отзыв доступа | 204 |
 | POST | `/api/users/{id}/invite` | письмо с ключом/кодом | 202 |
 | POST | `/api/auth/confirm-email` | код подтверждения email | 200 |
 
@@ -550,6 +562,10 @@ Argon2id-хеш и отправляет письмо через SMTP/Gmail API. 
 - JSON использует `snake_case`, время — ISO 8601 UTC.
 - `POST /api/inspect` — `multipart/form-data`: обязательные `file`
   (JPEG/PNG/WebP) и `equipment_id`. Ответ синхронный, без ID фоновой задачи.
+- `POST /api/inspect/detailed` — предложенный, ещё не реализованный backend-
+  endpoint. Передаёт `file`, JSON `inspection` и `condition_parameters` того
+  же осмотра; mock frontend возвращает `ApiError(501)` с сообщением, что
+  подробный анализ доступен после подключения backend.
 - `POST /api/reports` — `multipart/form-data`: `equipment_id`,
   `inspection_id`, `status` (веб-панель передаёт `open`), `payload`
   (обязательная JSON-строка `InspectionResult`); `comment`, файл `photo`
@@ -565,6 +581,12 @@ Argon2id-хеш и отправляет письмо через SMTP/Gmail API. 
   отправляет ключ письмом и возвращает только `account` + `invitation`.
   `access_key` в ответе отсутствует. `admin` не может создавать `admin` или
   `director`; перевыпуск ключей администраторов — только у `director`.
+- Employee HTTP-запросы включают `credentials: 'include'` и добавляют Bearer
+  токен, если он есть в сессии. Ответы UI нормализуются без открытых ключей,
+  солей и хешей; director исключается из списка сотрудников.
+- `DELETE /api/users/{id}` оптимистично убирает запись из активного UI после
+  успеха. Backend должен подтвердить deactivation/soft-delete и отзыв сессий;
+  физическое удаление не предполагается.
 - При отправке `FormData` не задавать `Content-Type` вручную: браузер добавит
   multipart boundary. `src/lib/api.ts` уже делает это правильно.
 - Ошибки: `404` — объект не найден, `422` — валидация, `503` — недоступная
@@ -720,11 +742,13 @@ LLM_MODE=mock | real
 3. **Проверить слой данных.** В `src/lib/api.ts` уже есть `fetchEquipment()`,
    `fetchEquipmentById()`, `saveEquipment()`, `inspectImage()`, `fetchReports()`,
    `fetchReportById()`, `createReport()`, `updateReportStatus()` и
-   `subscribeToReportChanges()`. Сетевые вызовы оставлять здесь. В
-   `src/lib/inspection.ts` синхронизировать типы с контрактом; runtime-валидации
-   JSON сейчас нет, приведение типа `as T` её не заменяет. Если согласованы
-   cookie-сессии, доработать `request()` (credentials/CSRF); сейчас такого
-   механизма нет. После подключения backend удалить/отключить mock-хранилище
+   `subscribeToReportChanges()`, а также `fetchEmployees()`, `createEmployee()`,
+   `reissueEmployee()` и `deleteEmployee()`. Сетевые вызовы оставлять здесь. В
+   `src/lib/inspection.ts` синхронизировать типы с контрактом; общая runtime-
+   валидация JSON ответов ещё не реализована. Employee API boundary проверяет
+   identity/role/invitation поля и отбрасывает чувствительные поля. `request()`
+   отправляет credentials; cookie mutations требуют CSRF-защиты на backend.
+   После подключения backend удалить/отключить mock-хранилище
    `promscan:mock-reports:v2` и подписку на localStorage-события — в real-режиме
    `subscribeToReportChanges()` уже возвращает no-op.
 
@@ -806,15 +830,11 @@ LLM_MODE=mock | real
      сервер действительно вернул mock-результат;
    - повторить тесты, сборку и проверку зависимостей из раздела 9.
 
-9. **Отдельно согласовать пользователей и вход.** Только после появления
-   серверного контракта менять `src/lib/access.ts`, `src/lib/accessKeys.ts`,
-   `src/lib/session.ts`, `src/lib/email.ts`, `src/lib/employees.ts`,
-   `src/context/RoleContext.tsx`, `src/pages/Users.tsx` и компоненты
-   входа/доступа. До этого они остаются демо независимо от флага API.
-   Проверить: `POST /api/auth/login` с `access_key`, HttpOnly-cookie,
-   `GET /api/auth/me`, `POST /api/users`, `reissue-key`, `invite` и
-   `confirm-email`. Справочник сотрудников и проверка исполнителя в PATCH
-   станут настоящими только после серверной сессии и `/api/users`.
+9. **Подключить пользователей и вход.** Employee list/create/reissue/delete уже
+   имеют real HTTP adapters в `src/lib/api.ts`; backend реализации пока нет.
+   Проверить cookie/CSRF и серверные права вместе с `POST /api/auth/login`,
+   `GET /api/auth/me`, invite и confirm-email. Mock-вход и роль в клиенте не
+   являются авторизацией.
 
 ---
 
@@ -884,10 +904,10 @@ TypeScript-типы сами по себе не проверяют runtime JSON.
    прохождения API-приёмки, затем выполнить сценарий сканер → создание задачи
    → открытие `/task/{id}` → начало/завершение → обновление списка диспетчера.
    Не объявлять интеграцию готовой по одному успешному `/health`.
-8. **Отдельная задача: доступ и сотрудники.** Раздел 4.1 `API_CONTRACT.md`
-   является целевым проектом, но auth/users endpoints не входят в текущий набор
-   готовых методов frontend. Реализовывать их только отдельным согласованным
-   этапом: серверная сессия, RBAC, Argon2id, rate limiting, приглашения и email.
+8. **Доступ и сотрудники.** Employee routes уже подключены во frontend-клиенте,
+   но backend отсутствует. Реализовать login/me/logout и employee routes с
+   RBAC, Argon2id, rate limiting, приглашениями и email; подтвердить DELETE
+   deactivation semantics.
 
 ### 8.3. Критерии приёмки backend
 
@@ -971,7 +991,7 @@ TypeScript-типы сами по себе не проверяют runtime JSON.
 
 ## 10. Проверка качества
 
-- `npm run test:run -- --maxWorkers=1` — **144 теста в 12 файлах**: API-клиент, FastAPI-ошибки
+- `npm run test:run -- --maxWorkers=1` — **TBD тестов в 12 файлах** после employee API и восстановления подробного анализа: API-клиент, FastAPI-ошибки
   валидации, маршруты и роли, вход и ключи доступа, сотрудники, сканер,
   список дефектов и мобильная карточка задачи.
 - Проверки realtime: замена списка/процентов, удаление отсутствующих зон,
@@ -980,7 +1000,7 @@ TypeScript-типы сами по себе не проверяют runtime JSON.
   без параллельного запуска, сброс исчезнувшего выбора, различие live-mock и
   фото. `ConditionParameters` не добавляет строки в список. Real multipart не
   содержит mock-флагов.
-- `npm run build` — TypeScript strict + Vite; проверка прошла.
+- `npm run build` — TypeScript strict + Vite.
 - `npm audit` — на момент проверки **0 уязвимостей**; повторять при обновлении
   зависимостей, не запускать автоматические исправления без оценки изменений.
 - Ручная проверка frontend на 1440 / 1024 / 768 / 390: вход по ключу, роли и
@@ -1083,10 +1103,10 @@ README, поэтому считать его секретом нельзя.
 - Добавлен `createMockLiveInspection()` с циклом появления/исчезновения зон.
   Он включён только для mock-видеопотока; фото и сохранённые fixtures не
   переводятся на live-цикл. Real HTTP-контракт multipart не изменён.
-- `ConditionParameters` сохранён для детального анализа, но больше не
-  является источником realtime-списка. Правила документированы в README
+- `ConditionParameters` сохранён в `InspectionResult` и используется detailed-
+  analysis запросом, но не является источником realtime-списка. Правила документированы в README
   и `docs/API_CONTRACT.md`.
-- Проверено: 144/144 frontend-теста, TypeScript strict и Vite-сборка.
+- Проверено: 140/140 frontend-тестов, TypeScript strict и Vite-сборка.
   Новый блок просмотрен на 1440/1024/820/768/390/320 px; общий visual gate
   остаётся FAIL, незакрытые замечания и ограничения — в разделе 10.
 - Изменения подготовлены в `newfront`. **Коммит одобрен пользователем в чате.
@@ -1153,14 +1173,6 @@ README, поэтому считать его секретом нельзя.
   в `src/lib/inspection.ts`.
 - Добавлен API-клиент `src/lib/api.ts` с переключателем mock/real.
 - Тесты обновлены: 38 проходят (добавлены проверки mock-схем).
-
-### 14.11.2026 — realtime-параметры и детальный анализ
-
-- Основной шрифт интерфейса изменён на Nunito Sans, IBM Plex Mono оставлен
-  для идентификаторов и измерений.
-- Добавлены три параметра realtime и кнопка запроса детального анализа.
-- Предложенный endpoint и формат ответа документированы; backend не входит
-  в эти frontend-изменения.
 
 ### 13.11.2026 — контракт и backend
 

@@ -14,6 +14,7 @@ import {
   Mail,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   UserPlus,
   X,
 } from 'lucide-react';
@@ -21,12 +22,16 @@ import { AccessDenied } from '../components/AccessDenied';
 import { PageHeader } from '../components/PageHeader';
 import { useRole } from '../context/RoleContext';
 import { DIRECTOR_ACCOUNT, maskAccessKey } from '../lib/accessKeys';
+import { API_CONFIG, deleteEmployee, fetchEmployees } from '../lib/api';
 import type { AccessKeyEmailResult } from '../lib/email';
 import {
   EMPLOYEES_CHANGED_EVENT,
+  EMPLOYEES_STORAGE_KEY,
   loadEmployees,
   saveEmployees,
+  toEmployeeAccount,
   type Employee,
+  type EmployeeAccount,
   type EmployeeRole,
 } from '../lib/employees';
 import { ROLE_LABELS } from '../lib/roles';
@@ -85,7 +90,7 @@ function FieldError({ id, message }: { id: string; message: string }) {
   );
 }
 
-function InvitationLine({ employee }: { employee: Employee }) {
+function InvitationLine({ employee }: { employee: EmployeeAccount }) {
   const { invitation } = employee;
 
   if (invitation.status === 'sent') {
@@ -124,7 +129,7 @@ function InvitationLine({ employee }: { employee: Employee }) {
 }
 
 interface KeyDeliveryDialogProps {
-  employee: Employee;
+  employee: EmployeeAccount;
   invitation: AccessKeyEmailResult;
   restoreFocus: () => void;
   onClose: () => void;
@@ -268,6 +273,131 @@ function KeyDeliveryDialog({
     </div>,
     document.body,
   );
+}
+
+interface DeleteEmployeeDialogProps {
+  employee: EmployeeAccount;
+  deleting: boolean;
+  error: string;
+  restoreFocus: () => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
+function DeleteEmployeeDialog({
+  employee,
+  deleting,
+  error,
+  restoreFocus,
+  onClose,
+  onConfirm,
+}: DeleteEmployeeDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(dialogRef, {
+    initialFocus: 'button[data-delete-cancel]',
+    onEscape: deleting ? undefined : onClose,
+    restoreFocus,
+  });
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] grid place-items-center px-4 py-6">
+      <div
+        onClick={() => {
+          if (!deleting) onClose();
+        }}
+        className="absolute inset-0 bg-black/45"
+        aria-hidden="true"
+      />
+
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-employee-title"
+        className="relative w-full max-w-[520px] border border-line bg-panel shadow-sheet"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-5 sm:px-7">
+          <div>
+            <p className="eyebrow">Отзыв доступа</p>
+            <h2
+              id="delete-employee-title"
+              className="mt-2 text-2xl font-medium tracking-[-0.035em] text-ink"
+            >
+              Удалить сотрудника?
+            </h2>
+            <p className="mt-2 text-xs leading-5 text-muted">
+              {employee.fullName} · {employee.email}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={deleting}
+            className="btn-icon border-0"
+            aria-label="Закрыть окно"
+          >
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="space-y-5 px-5 py-6 sm:px-7">
+          <div className="border border-danger/30 bg-danger/[0.04] p-4">
+            <p className="text-sm leading-6 text-soft">
+              Доступ сотрудника будет отозван, а запись исчезнет из списка.
+              Это действие нельзя отменить.
+            </p>
+          </div>
+
+          {error ? (
+            <p className="border border-danger/30 bg-danger/[0.04] px-4 py-3 text-sm text-danger" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              data-delete-cancel
+              onClick={onClose}
+              disabled={deleting}
+              className="btn-secondary w-full sm:w-auto"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={deleting}
+              aria-busy={deleting}
+              className="inline-flex min-h-11 items-center justify-center gap-2 border border-danger bg-danger px-4 font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {deleting ? (
+                <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+              )}
+              {deleting ? 'Удаляем…' : 'Удалить'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function keyDateLabel(keyCreatedAt: string | null): string {
+  return keyCreatedAt ? `создан ${keyCreatedAt.slice(0, 10)}` : 'ключ ещё не создан';
 }
 
 interface AddEmployeeModalProps {
@@ -609,23 +739,68 @@ function AddEmployeeModal({
 export function Users() {
   const { role } = useRole();
   const compact = useMediaQuery('(max-width: 1023px)');
-  const [employees, setEmployees] = useState<Employee[]>(() => loadEmployees());
+  const [employees, setEmployees] = useState<EmployeeAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [delivery, setDelivery] = useState<ProvisionedEmployee | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeAccount | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const [actionError, setActionError] = useState('');
   const addEmployeeButtonRef = useRef<HTMLButtonElement>(null);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
+  const staffHeadingRef = useRef<HTMLHeadingElement>(null);
+  const mountedRef = useRef(true);
+
+  const loadEmployeeList = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+
+    try {
+      const next = await fetchEmployees();
+      if (!mountedRef.current) return;
+      setEmployees(next);
+    } catch (reason: unknown) {
+      if (!mountedRef.current) return;
+      setLoadError(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось загрузить список сотрудников.',
+      );
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const refresh = () => setEmployees(loadEmployees());
+    mountedRef.current = true;
+    void loadEmployeeList();
+
+    if (!API_CONFIG.useMock) {
+      return () => {
+        mountedRef.current = false;
+      };
+    }
+
+    const refresh = () => {
+      void loadEmployeeList();
+    };
     window.addEventListener(EMPLOYEES_CHANGED_EVENT, refresh);
-    window.addEventListener('storage', refresh);
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === EMPLOYEES_STORAGE_KEY) {
+        refresh();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
 
     return () => {
       window.removeEventListener(EMPLOYEES_CHANGED_EVENT, refresh);
-      window.removeEventListener('storage', refresh);
+      window.removeEventListener('storage', handleStorage);
+      mountedRef.current = false;
     };
-  }, []);
+  }, [loadEmployeeList]);
 
   const existingEmails = useMemo(
     () =>
@@ -639,35 +814,44 @@ export function Users() {
   const closeModal = useCallback(() => setModalOpen(false), []);
   const closeDelivery = useCallback(() => setDelivery(null), []);
 
-  const persist = useCallback((next: Employee[]): boolean => {
-    if (!saveEmployees(next)) {
-      return false;
-    }
-
-    setEmployees(next);
-    return true;
-  }, []);
-
   const handleCreated = useCallback(
     (result: ProvisionedEmployee) => {
-      const saved = persist([result.employee, ...loadEmployees()]);
       setModalOpen(false);
 
-      if (!saved) {
-        setActionError(
-          'Не удалось сохранить сотрудника: хранилище браузера недоступно. Ключ уже отправлен в демо-письмо, но учётная запись не создана.',
-        );
-        return;
+      if (API_CONFIG.useMock) {
+        const localEmployee = result.localEmployee;
+        if (!localEmployee) {
+          setActionError('Демо-режим не вернул локальные данные сотрудника.');
+          return;
+        }
+
+        const next: Employee[] = [
+          localEmployee,
+          ...loadEmployees().filter((item) => item.id !== localEmployee.id),
+        ];
+        if (!saveEmployees(next)) {
+          setActionError(
+            'Не удалось сохранить сотрудника: хранилище браузера недоступно. Ключ уже отправлен в демо-письмо, но учётная запись не создана.',
+          );
+          return;
+        }
+        setEmployees(next.map(toEmployeeAccount));
+      } else {
+        setEmployees((current) => [
+          result.employee,
+          ...current.filter((item) => item.id !== result.employee.id),
+        ]);
       }
 
+      setActionError('');
       setDelivery(result);
     },
-    [persist],
+    [],
   );
 
   const handleReissue = useCallback(
-    async (employee: Employee) => {
-      if (busyId) return;
+    async (employee: EmployeeAccount) => {
+      if (busyId || deletingId) return;
       if (role === 'admin' && employee.role === 'admin') {
         setActionError('Перевыпускать ключи администраторов может только директор.');
         return;
@@ -678,16 +862,29 @@ export function Users() {
 
       try {
         const result = await reissueEmployeeAccess(employee);
-        const next = loadEmployees().map((item) =>
-          item.id === employee.id ? result.employee : item,
-        );
-        const saved = persist(next);
+        if (API_CONFIG.useMock) {
+          const localEmployee = result.localEmployee;
+          if (!localEmployee) {
+            setActionError('Демо-режим не вернул локальные данные сотрудника.');
+            return;
+          }
 
-        if (!saved) {
-          setActionError(
-            'Не удалось сохранить новый ключ: хранилище браузера недоступно. Старый ключ продолжает действовать.',
+          const next = loadEmployees().map((item) =>
+            item.id === localEmployee.id ? localEmployee : item,
           );
-          return;
+          if (!saveEmployees(next)) {
+            setActionError(
+              'Не удалось сохранить новый ключ: хранилище браузера недоступно. Старый ключ продолжает действовать.',
+            );
+            return;
+          }
+          setEmployees(next.map(toEmployeeAccount));
+        } else {
+          setEmployees((current) =>
+            current.map((item) =>
+              item.id === result.employee.id ? result.employee : item,
+            ),
+          );
         }
 
         setDelivery(result);
@@ -701,8 +898,50 @@ export function Users() {
         setBusyId(null);
       }
     },
-    [busyId, persist, role],
+    [busyId, deletingId, role],
   );
+
+  const handleDelete = useCallback(
+    (employee: EmployeeAccount, trigger: HTMLButtonElement) => {
+      if (busyId || deletingId) return;
+
+      deleteTriggerRef.current = trigger;
+      setDeleteError('');
+      setDeleteTarget(employee);
+    },
+    [busyId, deletingId],
+  );
+
+  const closeDeleteDialog = useCallback(() => {
+    if (deletingId) return;
+    setDeleteTarget(null);
+    setDeleteError('');
+  }, [deletingId]);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget || busyId || deletingId) return;
+
+    const employee = deleteTarget;
+    setDeletingId(employee.id);
+    setDeleteError('');
+    setActionError('');
+
+    try {
+      await deleteEmployee(employee.id);
+      setEmployees((current) =>
+        current.filter((item) => item.id !== employee.id),
+      );
+      setDeletingId(null);
+      setDeleteTarget(null);
+    } catch (reason: unknown) {
+      setDeleteError(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось удалить сотрудника.',
+      );
+      setDeletingId(null);
+    }
+  }, [busyId, deleteTarget, deletingId]);
 
   // Дополнительная проверка поверх RoleGuard: прямой вызов компонента
   // не должен раскрывать таблицу сотрудников.
@@ -757,6 +996,7 @@ export function Users() {
             ref={addEmployeeButtonRef}
             type="button"
             onClick={() => setModalOpen(true)}
+            disabled={loading || busyId !== null || deletingId !== null}
             className="btn-primary"
           >
             <UserPlus className="h-4 w-4" aria-hidden="true" />
@@ -790,7 +1030,9 @@ export function Users() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2
+              ref={staffHeadingRef}
               id="staff-heading"
+              tabIndex={-1}
               className="text-2xl font-medium tracking-[-0.025em] text-ink"
             >
               Штат и ключи доступа
@@ -802,7 +1044,9 @@ export function Users() {
             </p>
           </div>
           <span className="tag w-fit border-line text-muted">
-            {String(employees.length).padStart(2, '0')} записей
+            {loading
+              ? 'Загрузка…'
+              : `${String(employees.length).padStart(2, '0')} записей`}
           </span>
         </div>
 
@@ -812,12 +1056,71 @@ export function Users() {
           </p>
         ) : null}
 
-        {compact ? (
+        {loading ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-6 flex min-h-40 items-center justify-center border border-line bg-panel px-5 py-10 text-center"
+          >
+            <div>
+              <RefreshCw
+                className="mx-auto h-5 w-5 animate-spin text-accent"
+                aria-hidden="true"
+              />
+              <p className="mt-3 text-sm text-muted">Загружаем сотрудников…</p>
+            </div>
+          </div>
+        ) : loadError ? (
+          <div
+            role="alert"
+            className="mt-6 flex flex-col gap-4 border border-danger/30 bg-danger/[0.04] px-5 py-5 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle
+                className="mt-0.5 h-4 w-4 shrink-0 text-danger"
+                aria-hidden="true"
+              />
+              <div>
+                <p className="text-sm font-medium text-ink">
+                  Не удалось загрузить список сотрудников
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted">{loadError}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadEmployeeList()}
+              className="btn-secondary shrink-0"
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Повторить
+            </button>
+          </div>
+        ) : employees.length === 0 ? (
+          <div className="mt-6 flex min-h-40 flex-col items-center justify-center border border-dashed border-line-strong bg-panel px-5 py-10 text-center">
+            <UserPlus className="h-5 w-5 text-accent" aria-hidden="true" />
+            <p className="mt-3 text-sm font-medium text-ink">
+              Сотрудников пока нет
+            </p>
+            <p className="mt-1 max-w-sm text-xs leading-5 text-muted">
+              Добавьте первую учётную запись, чтобы выдать сотруднику ключ доступа.
+            </p>
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="btn-secondary mt-4"
+            >
+              <UserPlus className="h-4 w-4" aria-hidden="true" />
+              Добавить сотрудника
+            </button>
+          </div>
+        ) : compact ? (
           <div className="mt-6 space-y-3">
             {employees.map((employee) => {
               const roleMeta = EMPLOYEE_ROLE_META[employee.role];
               const canReissue =
                 role === 'director' || employee.role !== 'admin';
+              const isDeleting = deletingId === employee.id;
 
               return (
                 <article
@@ -866,7 +1169,7 @@ export function Users() {
                     <button
                       type="button"
                       onClick={() => void handleReissue(employee)}
-                      disabled={busyId === employee.id || !canReissue}
+                      disabled={busyId !== null || deletingId !== null || !canReissue}
                       aria-label={`Перевыпустить ключ: ${employee.fullName}`}
                       title={
                         canReissue
@@ -883,124 +1186,164 @@ export function Users() {
                       />
                       Перевыпустить
                     </button>
+                    <button
+                      type="button"
+                      onClick={(event) => handleDelete(employee, event.currentTarget)}
+                      disabled={busyId !== null || deletingId !== null}
+                      aria-label={`Удалить сотрудника: ${employee.fullName}`}
+                      aria-busy={isDeleting}
+                      className="inline-flex h-11 items-center gap-1.5 border border-danger/25 px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-danger transition-colors hover:border-danger/50 disabled:opacity-50"
+                    >
+                      {isDeleting ? (
+                        <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Trash2 className="h-3 w-3" aria-hidden="true" />
+                      )}
+                      {isDeleting ? 'Удаляем…' : 'Удалить'}
+                    </button>
                   </div>
                   <p className="mt-1.5 font-mono text-[9px] uppercase tracking-[0.08em] text-faint">
-                    создан {employee.keyCreatedAt.slice(0, 10)}
+                    {keyDateLabel(employee.keyCreatedAt)}
                   </p>
                 </article>
               );
             })}
           </div>
         ) : (
-        <div className="mt-6 overflow-x-auto border border-line bg-panel">
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <thead className="table-head bg-raised">
-              <tr>
-                <th scope="col" className="px-5 py-3.5 font-medium">
-                  ФИО
-                </th>
-                <th scope="col" className="px-5 py-3.5 font-medium">
-                  Email
-                </th>
-                <th scope="col" className="px-5 py-3.5 font-medium">
-                  Роль
-                </th>
-                <th scope="col" className="px-5 py-3.5 font-medium">
-                  Ключ доступа
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {employees.map((employee) => {
-                const roleMeta = EMPLOYEE_ROLE_META[employee.role];
-                const canReissue =
-                  role === 'director' || employee.role !== 'admin';
+          <div className="mt-6 overflow-x-auto border border-line bg-panel">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead className="table-head bg-raised">
+                <tr>
+                  <th scope="col" className="px-5 py-3.5 font-medium">
+                    ФИО
+                  </th>
+                  <th scope="col" className="px-5 py-3.5 font-medium">
+                    Email
+                  </th>
+                  <th scope="col" className="px-5 py-3.5 font-medium">
+                    Роль
+                  </th>
+                  <th scope="col" className="px-5 py-3.5 font-medium">
+                    Ключ доступа
+                  </th>
+                  <th scope="col" className="px-5 py-3.5 font-medium">
+                    Действия
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {employees.map((employee) => {
+                  const roleMeta = EMPLOYEE_ROLE_META[employee.role];
+                  const canReissue =
+                    role === 'director' || employee.role !== 'admin';
+                  const isDeleting = deletingId === employee.id;
 
-                return (
-                  <tr
-                    key={employee.id}
-                    className="transition-colors duration-150 hover:bg-ink/[0.025]"
-                  >
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="grid h-10 w-10 shrink-0 place-items-center border border-line bg-canvas font-mono text-[10px] font-medium tracking-[0.08em] text-soft"
-                          aria-hidden="true"
-                        >
-                          {getInitials(employee.fullName)}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="font-medium text-ink">
-                            {employee.fullName}
-                          </p>
-                          <p className="mt-1 font-mono text-[9px] tracking-[0.1em] text-faint">
-                            {employee.id}
-                          </p>
+                  return (
+                    <tr
+                      key={employee.id}
+                      className="transition-colors duration-150 hover:bg-ink/[0.025]"
+                    >
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className="grid h-10 w-10 shrink-0 place-items-center border border-line bg-canvas font-mono text-[10px] font-medium tracking-[0.08em] text-soft"
+                            aria-hidden="true"
+                          >
+                            {getInitials(employee.fullName)}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-medium text-ink">
+                              {employee.fullName}
+                            </p>
+                            <p className="mt-1 font-mono text-[9px] tracking-[0.1em] text-faint">
+                              {employee.id}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <p className="text-muted">{employee.email}</p>
-                      <div className="mt-1.5">
-                        <InvitationLine employee={employee} />
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] ${roleMeta.text}`}
-                      >
+                      </td>
+                      <td className="px-5 py-4">
+                        <p className="text-muted">{employee.email}</p>
+                        <div className="mt-1.5">
+                          <InvitationLine employee={employee} />
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
                         <span
-                          className={`h-1.5 w-1.5 shrink-0 ${roleMeta.dot}`}
-                          aria-hidden="true"
-                        />
-                        {roleMeta.label}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <code
-                          className="border border-line bg-deep px-2 py-1 font-mono text-xs tracking-[0.12em] text-faint"
-                          title="Ключ хранится только в виде хеша"
+                          className={`inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em] ${roleMeta.text}`}
                         >
-                          {maskAccessKey()}
-                        </code>
-                        <button
-                          type="button"
-                          onClick={() => void handleReissue(employee)}
-                          disabled={busyId === employee.id || !canReissue}
-                          aria-label={`Перевыпустить ключ: ${employee.fullName}`}
-                          title={
-                            canReissue
-                              ? undefined
-                              : 'Ключи администраторов перевыпускает только директор'
-                          }
-                          className="inline-flex h-11 items-center gap-1.5 border border-line px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-muted transition-colors hover:border-line-strong hover:text-ink disabled:opacity-50"
-                        >
-                          <RefreshCw
-                            className={`h-3 w-3 ${
-                              busyId === employee.id ? 'animate-spin' : ''
-                            }`}
+                          <span
+                            className={`h-1.5 w-1.5 shrink-0 ${roleMeta.dot}`}
                             aria-hidden="true"
                           />
-                          Перевыпустить
-                        </button>
-                      </div>
-                      <p className="mt-1.5 font-mono text-[9px] uppercase tracking-[0.08em] text-faint">
-                        создан {employee.keyCreatedAt.slice(0, 10)}
-                      </p>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                          {roleMeta.label}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <code
+                            className="border border-line bg-deep px-2 py-1 font-mono text-xs tracking-[0.12em] text-faint"
+                            title="Ключ хранится только в виде хеша"
+                          >
+                            {maskAccessKey()}
+                          </code>
+                          <p className="font-mono text-[9px] uppercase tracking-[0.08em] text-faint">
+                            {keyDateLabel(employee.keyCreatedAt)}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleReissue(employee)}
+                            disabled={busyId !== null || deletingId !== null || !canReissue}
+                            aria-label={`Перевыпустить ключ: ${employee.fullName}`}
+                            title={
+                              canReissue
+                                ? undefined
+                                : 'Ключи администраторов перевыпускает только директор'
+                            }
+                            className="inline-flex h-11 items-center gap-1.5 border border-line px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-muted transition-colors hover:border-line-strong hover:text-ink disabled:opacity-50"
+                          >
+                            <RefreshCw
+                              className={`h-3 w-3 ${
+                                busyId === employee.id ? 'animate-spin' : ''
+                              }`}
+                              aria-hidden="true"
+                            />
+                            Перевыпустить
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => handleDelete(employee, event.currentTarget)}
+                            disabled={busyId !== null || deletingId !== null}
+                            aria-label={`Удалить сотрудника: ${employee.fullName}`}
+                            aria-busy={isDeleting}
+                            className="inline-flex h-11 items-center gap-1.5 border border-danger/25 px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-danger transition-colors hover:border-danger/50 disabled:opacity-50"
+                          >
+                            {isDeleting ? (
+                              <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
+                            ) : (
+                              <Trash2 className="h-3 w-3" aria-hidden="true" />
+                            )}
+                            {isDeleting ? 'Удаляем…' : 'Удалить'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
 
         <div className="mt-3 flex flex-col gap-2 text-[11px] text-faint sm:flex-row sm:items-center sm:justify-between">
           <p>Показано {employees.length} сотрудников</p>
           <p>
-            Демо-справочник · в localStorage только PBKDF2-хеши, письма — в mock-outbox
+            {API_CONFIG.useMock
+              ? 'Демо-справочник · в localStorage только PBKDF2-хеши, письма — в mock-outbox'
+              : 'Данные загружены из employee API · ключи и их хеши не возвращаются в интерфейс'}
           </p>
         </div>
       </section>
@@ -1021,6 +1364,24 @@ export function Users() {
           invitation={delivery.invitation}
           restoreFocus={() => addEmployeeButtonRef.current?.focus()}
           onClose={closeDelivery}
+        />
+      ) : null}
+
+      {deleteTarget ? (
+        <DeleteEmployeeDialog
+          employee={deleteTarget}
+          deleting={deletingId === deleteTarget.id}
+          error={deleteError}
+          restoreFocus={() => {
+            const trigger = deleteTriggerRef.current;
+            if (trigger?.isConnected) {
+              trigger.focus();
+            } else {
+              staffHeadingRef.current?.focus();
+            }
+          }}
+          onClose={closeDeleteDialog}
+          onConfirm={() => void confirmDelete()}
         />
       ) : null}
     </div>

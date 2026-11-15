@@ -29,7 +29,7 @@ export interface AccessKeyEmailInput {
 }
 
 export interface AccessKeyEmailResult {
-  provider: 'mock' | 'smtp';
+  provider: 'mock' | 'smtp' | 'gmail';
   status: 'queued' | 'sent' | 'failed';
   messageId: string | null;
   error: string | null;

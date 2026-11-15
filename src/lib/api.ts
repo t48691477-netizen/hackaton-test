@@ -16,19 +16,33 @@ import {
   MOCK_REPORTS,
   createMockInspection,
   createMockLiveInspection,
-  type ConditionParameters,
-  type DetailedAnalysisResult,
   type EquipmentDetail,
   type EquipmentSummary,
   type InspectionResult,
   type Report,
   type ReportStatus,
 } from './inspection';
+import { createAccessKeyRecord } from './accessKeys';
+import {
+  sendAccessKeyEmail,
+  toInvitationState,
+  type AccessKeyEmailResult,
+} from './email';
 import {
   findEmployeeById,
+  isLocalEmployee,
   loadEmployees,
+  saveEmployees,
+  toEmployeeAccount,
   toEmployeeRef,
+  type Employee,
+  type EmployeeAccount,
+  type EmployeeRole,
+  type InvitationState,
+  type InvitationStatus,
 } from './employees';
+import { ROLE_LABELS, type Permission, type Role } from './roles';
+import { getStoredSession, type Session } from './session';
 
 const BASE_URL = (
   import.meta.env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
@@ -186,9 +200,14 @@ function getMockEquipment(equipmentId: string): EquipmentDetail {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set('Accept', 'application/json');
+  const sessionToken = getStoredSession()?.sessionToken;
+  if (sessionToken) {
+    headers.set('Authorization', `Bearer ${sessionToken}`);
+  }
 
   const response = await fetch(`${BASE_URL}${path}`, {
     ...init,
+    credentials: 'include',
     headers,
   });
 
@@ -309,30 +328,368 @@ export async function inspectImage(
   });
 }
 
-export interface DetailedAnalysisInput {
-  image: Blob;
-  inspection: InspectionResult;
-  conditionParameters: ConditionParameters;
+interface AuthLoginResponse {
+  session_token: string;
+  expires_at: string;
+  account: {
+    id: string;
+    full_name: string;
+    email: string;
+    role: Role;
+  };
 }
 
-/** Proposed endpoint only; the backend implementation has not been connected. */
-export async function requestDetailedAnalysis({
-  image,
-  inspection,
-  conditionParameters,
-}: DetailedAnalysisInput): Promise<DetailedAnalysisResult> {
-  if (API_CONFIG.useMock) {
-    throw new ApiError(501, 'Подробный анализ доступен после подключения backend.');
+export async function loginWithAccessKey(accessKey: string): Promise<Session | null> {
+  try {
+    const response = await request<AuthLoginResponse>('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ access_key: accessKey }),
+    });
+
+    return {
+      accountId: response.account.id,
+      fullName: response.account.full_name,
+      email: response.account.email,
+      role: response.account.role,
+      issuedAt: new Date().toISOString(),
+      sessionToken: response.session_token,
+      expiresAt: response.expires_at,
+    };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) return null;
+    throw error;
+  }
+}
+
+export async function logout(): Promise<void> {
+  if (API_CONFIG.useMock || !getStoredSession()?.sessionToken) return;
+  try {
+    await request<void>('/api/auth/logout', { method: 'POST' });
+  } catch {
+    // The client still clears local state when the server cannot be reached.
+  }
+}
+
+export type ApiInvitationProvider = 'mock' | 'smtp' | 'gmail' | null;
+
+export interface ApiInvitation {
+  status: InvitationStatus;
+  email?: string;
+  provider?: ApiInvitationProvider;
+  sent_at?: string | null;
+  error?: string | null;
+}
+
+/** Безопасная запись пользователя из GET/POST /api/users. */
+export interface AuthAccount {
+  id: string;
+  full_name: string;
+  email: string;
+  role: Role;
+  permissions?: readonly Permission[];
+  invitation?: ApiInvitation | null;
+  key_created_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CreateUserInput {
+  fullName: string;
+  email: string;
+  role: EmployeeRole;
+}
+
+export interface UserMutationResponse {
+  account: AuthAccount;
+  invitation: ApiInvitation;
+}
+
+function employeeHeaders(init?: HeadersInit): Headers {
+  const headers = new Headers(init);
+  const sessionToken = getStoredSession()?.sessionToken;
+
+  if (sessionToken) {
+    headers.set('Authorization', `Bearer ${sessionToken}`);
   }
 
-  const form = new FormData();
-  form.append('file', image, 'frame.jpg');
-  form.append('inspection', JSON.stringify(inspection));
-  form.append('condition_parameters', JSON.stringify(conditionParameters));
+  return headers;
+}
 
-  return request<DetailedAnalysisResult>('/api/inspect/detailed', {
+async function employeeRequest<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  return request<T>(path, {
+    ...init,
+    headers: employeeHeaders(init?.headers),
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new ApiError(502, `Ответ API содержит некорректные данные: ${label}.`);
+  }
+  return value;
+}
+
+function isRole(value: unknown): value is Role {
+  return value === 'director' || value === 'admin' || value === 'dispatcher' || value === 'engineer';
+}
+
+function normalizeInvitation(
+  accountEmail: string,
+  value?: unknown,
+): InvitationState {
+  if (value === undefined || value === null) {
+    return {
+      status: 'not_sent',
+      email: accountEmail,
+      provider: null,
+      sentAt: null,
+      error: null,
+    };
+  }
+
+  const invitation = requireRecord(value, 'invitation');
+  const status = invitation.status ?? 'not_sent';
+  if (status !== 'not_sent' && status !== 'queued' && status !== 'sent' && status !== 'failed') {
+    throw new ApiError(502, 'Ответ API содержит неизвестный статус приглашения.');
+  }
+
+  const provider = invitation.provider ?? null;
+  if (provider !== null && provider !== 'mock' && provider !== 'smtp' && provider !== 'gmail') {
+    throw new ApiError(502, 'Ответ API содержит неизвестного почтового провайдера.');
+  }
+
+  const email = invitation.email;
+  const sentAt = invitation.sent_at;
+  const error = invitation.error;
+  if (email !== undefined && email !== null && typeof email !== 'string') {
+    throw new ApiError(502, 'Ответ API содержит некорректный email приглашения.');
+  }
+  if (sentAt !== undefined && sentAt !== null && typeof sentAt !== 'string') {
+    throw new ApiError(502, 'Ответ API содержит некорректную дату приглашения.');
+  }
+  if (error !== undefined && error !== null && typeof error !== 'string') {
+    throw new ApiError(502, 'Ответ API содержит некорректную ошибку приглашения.');
+  }
+
+  return {
+    status,
+    email: (typeof email === 'string' ? email.trim().toLowerCase() : '') || accountEmail,
+    provider,
+    sentAt: typeof sentAt === 'string' ? sentAt : null,
+    error: typeof error === 'string' ? error : null,
+  };
+}
+
+function isEmployeeRole(role: Role): role is EmployeeRole {
+  return role !== 'director';
+}
+
+function normalizeEmployeeAccount(value: unknown): EmployeeAccount | null {
+  const account = requireRecord(value, 'account');
+  if (!isRole(account.role)) {
+    throw new ApiError(502, 'Ответ API содержит неизвестную роль сотрудника.');
+  }
+  if (!isEmployeeRole(account.role)) {
+    return null;
+  }
+
+  const id = account.id;
+  const fullName = account.full_name;
+  const email = account.email;
+  const keyCreatedAt = account.key_created_at;
+  if (typeof id !== 'string' || !id.trim()) {
+    throw new ApiError(502, 'Ответ API содержит некорректный ID сотрудника.');
+  }
+  if (typeof fullName !== 'string' || !fullName.trim()) {
+    throw new ApiError(502, 'Ответ API содержит некорректное имя сотрудника.');
+  }
+  if (typeof email !== 'string' || !email.trim()) {
+    throw new ApiError(502, 'Ответ API содержит некорректный email сотрудника.');
+  }
+  if (keyCreatedAt !== undefined && keyCreatedAt !== null && typeof keyCreatedAt !== 'string') {
+    throw new ApiError(502, 'Ответ API содержит некорректную дату ключа сотрудника.');
+  }
+
+  return {
+    id,
+    fullName: fullName.trim().replace(/\s+/g, ' '),
+    email: email.trim().toLowerCase(),
+    role: account.role,
+    keyCreatedAt: typeof keyCreatedAt === 'string' && keyCreatedAt.trim()
+      ? keyCreatedAt
+      : null,
+    invitation: normalizeInvitation(email.trim().toLowerCase(), account.invitation),
+  };
+}
+
+function normalizeMutationInvitation(value: unknown): AccessKeyEmailResult {
+  const invitation = requireRecord(value, 'invitation');
+  const normalized = normalizeInvitation('', invitation);
+  return {
+    provider: normalized.provider ?? 'smtp',
+    status:
+      normalized.status === 'failed'
+        ? 'failed'
+        : normalized.status === 'sent'
+          ? 'sent'
+          : 'queued',
+    messageId: null,
+    error: normalized.error,
+  };
+}
+
+function requireEmployeeAccount(account: unknown): EmployeeAccount {
+  const employee = normalizeEmployeeAccount(account);
+  if (!employee) {
+    throw new ApiError(502, 'Ответ API вернул учётную запись директора вместо сотрудника.');
+  }
+  return employee;
+}
+
+export async function fetchEmployees(): Promise<EmployeeAccount[]> {
+  if (API_CONFIG.useMock) {
+    return loadEmployees().map((employee) => copyJson(toEmployeeAccount(employee)));
+  }
+
+  const accounts = await employeeRequest<unknown>('/api/users');
+  if (!Array.isArray(accounts)) {
+    throw new ApiError(502, 'Ответ API содержит некорректный список сотрудников.');
+  }
+  return accounts.flatMap((account) => {
+    const employee = normalizeEmployeeAccount(account);
+    return employee ? [employee] : [];
+  });
+}
+
+export async function createEmployee(
+  input: CreateUserInput,
+): Promise<{ employee: EmployeeAccount; invitation: AccessKeyEmailResult }> {
+  if (API_CONFIG.useMock) {
+    const record = await createAccessKeyRecord();
+    const email = input.email.trim().toLowerCase();
+    const employee: Employee = {
+      id: `emp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      fullName: input.fullName.trim().replace(/\s+/g, ' '),
+      email,
+      role: input.role,
+      keySalt: record.keySalt,
+      keyHash: record.keyHash,
+      keyCreatedAt: record.keyCreatedAt,
+      invitation: {
+        status: 'not_sent',
+        email,
+        provider: null,
+        sentAt: null,
+        error: null,
+      },
+    };
+    const accessKey = record.accessKey;
+    const invitation = await sendAccessKeyEmail({
+      to: employee.email,
+      fullName: employee.fullName,
+      accessKey,
+      role: ROLE_LABELS[employee.role],
+    });
+    employee.invitation = toInvitationState(employee.email, invitation);
+
+    if (!saveEmployees([employee, ...loadEmployees()])) {
+      throw new ApiError(500, 'Не удалось сохранить нового сотрудника.');
+    }
+
+    return { employee, invitation };
+  }
+
+  const response = requireRecord(await employeeRequest<unknown>('/api/users', {
     method: 'POST',
-    body: form,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      full_name: input.fullName.trim().replace(/\s+/g, ' '),
+      email: input.email.trim().toLowerCase(),
+      role: input.role,
+    }),
+  }), 'результат создания сотрудника');
+
+  return {
+    employee: requireEmployeeAccount(response.account),
+    invitation: normalizeMutationInvitation(response.invitation),
+  };
+}
+
+export async function reissueEmployee(
+  employeeId: string,
+): Promise<{ employee: EmployeeAccount; invitation: AccessKeyEmailResult }> {
+  if (API_CONFIG.useMock) {
+    const employee = findEmployeeById(employeeId);
+    if (!employee) throw new ApiError(404, 'Сотрудник не найден.');
+    if (!isLocalEmployee(employee)) {
+      throw new ApiError(409, 'Для локального сотрудника недоступен перевыпуск ключа.');
+    }
+
+    const record = await createAccessKeyRecord();
+    const nextEmployee: Employee = {
+      ...employee,
+      keySalt: record.keySalt,
+      keyHash: record.keyHash,
+      keyCreatedAt: record.keyCreatedAt,
+      invitation: {
+        status: 'not_sent',
+        email: employee.email,
+        provider: null,
+        sentAt: null,
+        error: null,
+      },
+    };
+    const invitation = await sendAccessKeyEmail({
+      to: nextEmployee.email,
+      fullName: nextEmployee.fullName,
+      accessKey: record.accessKey,
+      role: ROLE_LABELS[nextEmployee.role],
+    });
+    nextEmployee.invitation = toInvitationState(nextEmployee.email, invitation);
+
+    if (!saveEmployees(loadEmployees().map((item) =>
+      item.id === nextEmployee.id ? nextEmployee : item,
+    ))) {
+      throw new ApiError(500, 'Не удалось сохранить новый ключ сотрудника.');
+    }
+
+    return { employee: nextEmployee, invitation };
+  }
+
+  const response = requireRecord(await employeeRequest<unknown>(
+    `/api/users/${encodeURIComponent(employeeId)}/access`,
+    { method: 'POST' },
+  ), 'результат перевыпуска ключа');
+
+  return {
+    employee: requireEmployeeAccount(response.account),
+    invitation: normalizeMutationInvitation(response.invitation),
+  };
+}
+
+export async function deleteEmployee(employeeId: string): Promise<void> {
+  if (API_CONFIG.useMock) {
+    const employees = loadEmployees();
+    if (!employees.some((employee) => employee.id === employeeId)) {
+      throw new ApiError(404, 'Сотрудник не найден.');
+    }
+
+    if (!saveEmployees(employees.filter((employee) => employee.id !== employeeId))) {
+      throw new ApiError(500, 'Не удалось сохранить изменения в справочнике сотрудников.');
+    }
+    return;
+  }
+
+  await employeeRequest<void>(`/api/users/${encodeURIComponent(employeeId)}`, {
+    method: 'DELETE',
   });
 }
 

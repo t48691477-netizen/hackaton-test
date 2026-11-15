@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useRole } from '../context/RoleContext';
+import { API_CONFIG, ApiError, loginWithAccessKey } from '../lib/api';
 import {
   authenticateAccessKey,
   AuthError,
@@ -65,7 +66,9 @@ export function Unauthorized() {
     setSubmitting(true);
 
     try {
-      const session = await authenticateAccessKey(normalized);
+      const session = API_CONFIG.useMock
+        ? await authenticateAccessKey(normalized)
+        : await loginWithAccessKey(normalized);
 
       if (!session) {
         setError(
@@ -88,7 +91,9 @@ export function Unauthorized() {
       setError(
         reason instanceof AuthError
           ? reason.message
-          : 'Не удалось проверить ключ. Повторите попытку.',
+          : reason instanceof ApiError
+            ? reason.message
+            : 'Не удалось проверить ключ. Повторите попытку.',
       );
     } finally {
       setSubmitting(false);

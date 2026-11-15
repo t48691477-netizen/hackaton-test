@@ -101,29 +101,10 @@ export interface InspectionResult {
 }
 
 export interface ConditionParameters {
-  /** Optional classifier scores for detailed analysis, not detection presence. */
+  /** Optional classifier scores; they do not determine detection presence. */
   oil_leak_probability: number | null;
   rust_probability: number | null;
   poor_weld_probability: number | null;
-}
-
-export interface DetailedFinding {
-  title: string;
-  description: string;
-  severity: Severity;
-  recommendation: string;
-}
-
-export interface DetailedAnalysisResult {
-  analysis_id: string;
-  inspection_id: string;
-  summary: string;
-  findings: DetailedFinding[];
-  probable_causes: string[];
-  recommendation_steps: string[];
-  models: string[];
-  processing_ms: number;
-  analyzed_at: string;
 }
 
 /**

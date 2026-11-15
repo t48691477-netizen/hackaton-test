@@ -6,6 +6,7 @@ import {
   createMockInspection,
 } from './inspection';
 import type { CreateReportInput, EquipmentUpsert } from './api';
+import { SESSION_STORAGE_KEY } from './session';
 
 function equipmentInput(): EquipmentUpsert {
   const { id, created_at, updated_at, ...input } = MOCK_EQUIPMENT;
@@ -194,6 +195,27 @@ describe('API-клиент: mock-режим', () => {
     expect((await api.inspectImage(null, MOCK_EQUIPMENT.id, 8, { live: true })).defects).toEqual([]);
     expect((await api.inspectImage(null, MOCK_EQUIPMENT.id, 8, { live: false })).defects).toHaveLength(3);
     expect((await api.inspectImage(null, MOCK_EQUIPMENT.id, 8)).defects).toHaveLength(3);
+      expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('возвращает безопасный mock-список сотрудников и сохраняет mock-удаление', async () => {
+    const api = await import('./api');
+
+    const employees = await api.fetchEmployees();
+    expect(employees).toHaveLength(4);
+    expect(employees[0]).toMatchObject({
+      id: 'emp-001',
+      fullName: 'Иван Иванов',
+      role: 'dispatcher',
+    });
+    expect(employees[0]).not.toHaveProperty('keySalt');
+    expect(employees[0]).not.toHaveProperty('keyHash');
+    expect(fetch).not.toHaveBeenCalled();
+
+    await api.deleteEmployee('emp-001');
+    expect(
+      (await api.fetchEmployees()).some((employee) => employee.id === 'emp-001'),
+    ).toBe(false);
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -224,6 +246,38 @@ describe('API-клиент: mock-режим', () => {
 describe('API-клиент: HTTP-контракт', () => {
   const fetchMock = vi.fn<typeof fetch>();
 
+  const remoteEmployee = {
+    id: 'emp-007',
+    full_name: 'Пётр Сидоров',
+    email: 'p.sidorov@promscan.ru',
+    role: 'dispatcher',
+    key_created_at: '2026-11-15T08:30:00Z',
+    invitation: {
+      status: 'queued',
+      provider: 'smtp',
+      email: 'p.sidorov@promscan.ru',
+      sent_at: null,
+      error: null,
+    },
+    access_key: 'OPEN-KEY-SHOULD-NEVER-LEAK',
+    key_salt: 'server-salt',
+    key_hash: 'server-hash',
+  };
+
+  function setSessionToken(token = 'test-session-token') {
+    sessionStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({
+        accountId: 'director-001',
+        fullName: 'Генеральный директор',
+        email: 'director@promscan.ru',
+        role: 'director',
+        issuedAt: '2026-11-15T08:00:00Z',
+        sessionToken: token,
+      }),
+    );
+  }
+
   beforeEach(() => {
     vi.stubEnv('VITE_USE_MOCK_API', 'false');
     vi.stubEnv('VITE_API_BASE_URL', 'https://api.example///');
@@ -249,8 +303,177 @@ describe('API-клиент: HTTP-контракт', () => {
     ]);
     for (const [, init] of fetchMock.mock.calls) {
       expect(init?.method ?? 'GET').toBe('GET');
+      expect(init?.credentials).toBe('include');
       expect(new Headers(init?.headers).get('Accept')).toBe('application/json');
     }
+  });
+
+  it('запрашивает сотрудников с bearer и исключает director из UI-списка', async () => {
+    const api = await import('./api');
+    setSessionToken();
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          remoteEmployee,
+          { ...remoteEmployee, id: 'director-001', role: 'director' },
+        ]),
+        { status: 200 },
+      ),
+    );
+
+    const employees = await api.fetchEmployees();
+
+    expect(employees).toEqual([
+      {
+        id: 'emp-007',
+        fullName: 'Пётр Сидоров',
+        email: 'p.sidorov@promscan.ru',
+        role: 'dispatcher',
+        keyCreatedAt: '2026-11-15T08:30:00Z',
+        invitation: {
+          status: 'queued',
+          email: 'p.sidorov@promscan.ru',
+          provider: 'smtp',
+          sentAt: null,
+          error: null,
+        },
+      },
+    ]);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.example/api/users');
+    expect(init?.method ?? 'GET').toBe('GET');
+    expect(init?.credentials).toBe('include');
+    expect(new Headers(init?.headers).get('Accept')).toBe('application/json');
+    expect(new Headers(init?.headers).get('Authorization')).toBe(
+      'Bearer test-session-token',
+    );
+  });
+
+  it('создаёт сотрудника с нормализованным JSON-телом и возвращает статус приглашения', async () => {
+    const api = await import('./api');
+    setSessionToken('create-token');
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          account: remoteEmployee,
+          invitation: remoteEmployee.invitation,
+        }),
+        { status: 201 },
+      ),
+    );
+
+    const result = await api.createEmployee({
+      fullName: '  Пётр   Сидоров  ',
+      email: ' P.Sidorov@Promscan.ru ',
+      role: 'dispatcher',
+    });
+
+    expect(result.employee).toMatchObject({
+      id: 'emp-007',
+      fullName: 'Пётр Сидоров',
+      email: 'p.sidorov@promscan.ru',
+      role: 'dispatcher',
+    });
+    expect(result.invitation).toEqual({
+      provider: 'smtp',
+      status: 'queued',
+      messageId: null,
+      error: null,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.example/api/users');
+    expect(init?.method).toBe('POST');
+    expect(init?.credentials).toBe('include');
+    expect(new Headers(init?.headers).get('Accept')).toBe('application/json');
+    expect(new Headers(init?.headers).get('Authorization')).toBe(
+      'Bearer create-token',
+    );
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
+    expect(JSON.parse(init?.body as string)).toEqual({
+      full_name: 'Пётр Сидоров',
+      email: 'p.sidorov@promscan.ru',
+      role: 'dispatcher',
+    });
+  });
+
+  it('отклоняет mutation response с ролью директора и не раскрывает секретные поля', async () => {
+    const api = await import('./api');
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          account: { ...remoteEmployee, role: 'director' },
+          invitation: remoteEmployee.invitation,
+        }),
+        { status: 201 },
+      ),
+    );
+
+    await expect(api.createEmployee({
+      fullName: 'Сотрудник Тестов',
+      email: 'test@promscan.ru',
+      role: 'dispatcher',
+    })).rejects.toMatchObject({ name: 'ApiError', status: 502 });
+  });
+
+  it('отклоняет некорректные runtime-поля списка сотрудников', async () => {
+    const api = await import('./api');
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([{ ...remoteEmployee, invitation: { ...remoteEmployee.invitation, status: 'unknown' } }]),
+        { status: 200 },
+      ),
+    );
+
+    await expect(api.fetchEmployees()).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 502,
+      message: 'Ответ API содержит неизвестный статус приглашения.',
+    });
+  });
+
+  it('перевыпускает ключ через employee endpoint с bearer', async () => {
+    const api = await import('./api');
+    setSessionToken('reissue-token');
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          account: { ...remoteEmployee, key_created_at: '2026-11-15T09:00:00Z' },
+          invitation: { ...remoteEmployee.invitation, status: 'queued' },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await api.reissueEmployee('emp/a b');
+
+    expect(result.employee.keyCreatedAt).toBe('2026-11-15T09:00:00Z');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.example/api/users/emp%2Fa%20b/access');
+    expect(init?.method).toBe('POST');
+    expect(init?.credentials).toBe('include');
+    expect(init?.body).toBeUndefined();
+    expect(new Headers(init?.headers).get('Authorization')).toBe(
+      'Bearer reissue-token',
+    );
+  });
+
+  it('удаляет сотрудника через DELETE и принимает ответ 204', async () => {
+    const api = await import('./api');
+    setSessionToken('delete-token');
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(api.deleteEmployee('emp/a b')).resolves.toBeUndefined();
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.example/api/users/emp%2Fa%20b');
+    expect(init?.method).toBe('DELETE');
+    expect(init?.credentials).toBe('include');
+    expect(new Headers(init?.headers).get('Accept')).toBe('application/json');
+    expect(new Headers(init?.headers).get('Authorization')).toBe(
+      'Bearer delete-token',
+    );
   });
 
   it('передаёт EquipmentUpsert в POST JSON без служебных дат', async () => {
@@ -276,36 +499,10 @@ describe('API-клиент: HTTP-контракт', () => {
 
     expect(url).toBe('https://api.example/api/inspect');
     expect(init?.method).toBe('POST');
+    expect(init?.credentials).toBe('include');
     expect(form.get('equipment_id')).toBe(MOCK_EQUIPMENT.id);
     expect(form.get('file')).toMatchObject({ name: 'frame.jpg', type: 'image/jpeg', size: image.size });
     expect(Array.from(form.keys())).toEqual(['file', 'equipment_id']);
-    expect(new Headers(init?.headers).has('Content-Type')).toBe(false);
-  });
-
-  it('передаёт кадр, realtime-параметры и исходный осмотр для подробного анализа', async () => {
-    const api = await import('./api');
-    const image = new Blob(['frame'], { type: 'image/jpeg' });
-    const inspection = createMockInspection(7);
-
-    await api.requestDetailedAnalysis({
-      image,
-      inspection,
-      conditionParameters: inspection.condition_parameters,
-    });
-
-    const [url, init] = fetchMock.mock.calls[0];
-    const form = init?.body as FormData;
-    expect(url).toBe('https://api.example/api/inspect/detailed');
-    expect(init?.method).toBe('POST');
-    expect(form.get('file')).toMatchObject({
-      name: 'frame.jpg',
-      type: 'image/jpeg',
-      size: image.size,
-    });
-    expect(JSON.parse(form.get('inspection') as string)).toEqual(inspection);
-    expect(JSON.parse(form.get('condition_parameters') as string)).toEqual(
-      inspection.condition_parameters,
-    );
     expect(new Headers(init?.headers).has('Content-Type')).toBe(false);
   });
 
@@ -378,18 +575,3 @@ describe('API-клиент: HTTP-контракт', () => {
   });
 });
 
-describe('подробный анализ без backend', () => {
-  it('не создаёт mock-ответ и не отправляет запрос', async () => {
-    vi.resetModules();
-    vi.stubEnv('VITE_USE_MOCK_API', 'true');
-    const api = await import('./api');
-    const inspection = createMockInspection(1);
-
-    await expect(api.requestDetailedAnalysis({
-      image: new Blob(['frame'], { type: 'image/jpeg' }),
-      inspection,
-      conditionParameters: inspection.condition_parameters,
-    })).rejects.toMatchObject({ name: 'ApiError', status: 501 });
-    expect(fetch).not.toHaveBeenCalled();
-  });
-});
