@@ -2,7 +2,7 @@
  * Заготовка отправки письма с ключом доступа.
  *
  * В production письмо отправляет только сервер: он генерирует ключ, хранит
- * его хеш и вызывает SMTP/Gmail API. Браузер не должен ни генерировать ключ,
+ * его хеш и вызывает Resend API (или SMTP fallback). Браузер не должен ни генерировать ключ,
  * ни отправлять письма, ни получать открытый ключ.
  *
  * В автономном демо письмо складывается в mock-outbox в localStorage, чтобы
@@ -29,7 +29,7 @@ export interface AccessKeyEmailInput {
 }
 
 export interface AccessKeyEmailResult {
-  provider: 'mock' | 'smtp' | 'gmail';
+  provider: 'mock' | 'resend' | 'smtp' | 'gmail';
   status: 'queued' | 'sent' | 'failed';
   messageId: string | null;
   error: string | null;

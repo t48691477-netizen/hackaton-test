@@ -253,10 +253,10 @@ describe('API-клиент: HTTP-контракт', () => {
     role: 'dispatcher',
     key_created_at: '2026-11-15T08:30:00Z',
     invitation: {
-      status: 'queued',
-      provider: 'smtp',
+      status: 'sent',
+      provider: 'resend',
       email: 'p.sidorov@promscan.ru',
-      sent_at: null,
+      sent_at: '2026-11-15T10:30:00Z',
       error: null,
     },
     access_key: 'OPEN-KEY-SHOULD-NEVER-LEAK',
@@ -331,10 +331,10 @@ describe('API-клиент: HTTP-контракт', () => {
         role: 'dispatcher',
         keyCreatedAt: '2026-11-15T08:30:00Z',
         invitation: {
-          status: 'queued',
+          status: 'sent',
           email: 'p.sidorov@promscan.ru',
-          provider: 'smtp',
-          sentAt: null,
+          provider: 'resend',
+          sentAt: '2026-11-15T10:30:00Z',
           error: null,
         },
       },
@@ -376,8 +376,8 @@ describe('API-клиент: HTTP-контракт', () => {
       role: 'dispatcher',
     });
     expect(result.invitation).toEqual({
-      provider: 'smtp',
-      status: 'queued',
+      provider: 'resend',
+      status: 'sent',
       messageId: null,
       error: null,
     });

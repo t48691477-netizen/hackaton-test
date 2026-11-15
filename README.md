@@ -141,8 +141,11 @@ npm audit
 3. Введите `accessKey` на экране входа. Письмо хранит последние 20 сообщений.
 
 В production mock-outbox удаляется: ключ генерирует сервер, хранит только
-Argon2id-хеш и отправляет письмо через SMTP/Gmail API. Ответ API не содержит
-`access_key`.
+Argon2id-хеш и отправляет письмо через Resend API (SMTP остаётся резервным
+транспортом). В Resend нужно подтвердить домен отправителя и передать backend
+`RESEND_API_KEY` вместе с `RESEND_FROM_EMAIL`. Ключ API хранится только в backend
+secret manager; API возвращает provider и состояние отправки, но не `access_key`.
+Пароль от Gmail не нужен: адрес Gmail можно указать как email сотрудника-получателя.
 
 - Вход выполняется локально: `authenticateAccessKey()` перебирает аккаунты,
   проверяет PBKDF2-хеш и создаёт сессию. В production эту работу выполняет

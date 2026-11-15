@@ -19,7 +19,7 @@ export type InvitationStatus = 'not_sent' | 'queued' | 'sent' | 'failed';
 export interface InvitationState {
   status: InvitationStatus;
   email: string;
-  provider: 'mock' | 'smtp' | 'gmail' | null;
+  provider: 'mock' | 'resend' | 'smtp' | 'gmail' | null;
   sentAt: string | null;
   error: string | null;
 }

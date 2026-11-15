@@ -52,8 +52,13 @@ VisionMode     = mock | real
 LlmMode        = mock | real
 Role           = director | admin | dispatcher | engineer
 Permission     = scan | dispatch | users
-InvitationStatus = not_sent | queued | sent | failed
+InvitationStatus = not_sent | sent | failed
+InvitationProvider = resend | smtp | mock | null
 ```
+
+В real API mode backend использует `not_sent | sent | failed`; `queued` — только
+локальный demo outbox. Статус `sent` означает принятие письма transport-ом, но
+не подтверждённую доставку в inbox.
 
 Соответствие UI:
 
@@ -92,6 +97,12 @@ InvitationStatus = not_sent | queued | sent | failed
 
 Logout отправляет `POST /api/auth/logout` и отзывает серверную сессию. При
 `VITE_USE_MOCK_API=true` вход и выход остаются локальными.
+
+При добавлении пользователя или перевыпуске ключа письмо отправляется сервером
+через Resend; если Resend не настроен, backend использует SMTP fallback.
+Frontend получает provider и состояние отправки, но не ключ, API token или
+пароль почтового аккаунта. Для Resend backend нужны `RESEND_API_KEY` и
+`RESEND_FROM_EMAIL` с подтверждённым в Resend доменом отправителя.
 
 Роли и права:
 

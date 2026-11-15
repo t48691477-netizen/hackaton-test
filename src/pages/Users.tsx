@@ -673,11 +673,11 @@ function AddEmployeeModal({
                   />
                   <span>
                     <span className="block text-sm font-medium text-ink">
-                      Письмо с ключом и кодом подтверждения
+                      Письмо с ключом доступа
                     </span>
                     <span className="mt-1 block text-[11px] leading-5 text-faint">
                       В демо письмо складывается в mock-outbox браузера, реальную
-                      отправку выполнит backend после подключения SMTP/Gmail.
+                      отправку выполнит backend через Resend или резервный SMTP.
                     </span>
                   </span>
                 </div>

@@ -371,7 +371,7 @@ export async function logout(): Promise<void> {
   }
 }
 
-export type ApiInvitationProvider = 'mock' | 'smtp' | 'gmail' | null;
+export type ApiInvitationProvider = 'mock' | 'resend' | 'smtp' | 'gmail' | null;
 
 export interface ApiInvitation {
   status: InvitationStatus;
@@ -462,7 +462,7 @@ function normalizeInvitation(
   }
 
   const provider = invitation.provider ?? null;
-  if (provider !== null && provider !== 'mock' && provider !== 'smtp' && provider !== 'gmail') {
+  if (provider !== null && provider !== 'mock' && provider !== 'resend' && provider !== 'smtp' && provider !== 'gmail') {
     throw new ApiError(502, 'Ответ API содержит неизвестного почтового провайдера.');
   }
 
