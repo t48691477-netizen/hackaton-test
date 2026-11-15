@@ -20,6 +20,7 @@ data class HealthCheckStatus(
 
 data class SettingsUiState(
     val serverUrlInput: String = SettingsStore.DEFAULT_SERVER_URL,
+    val analysisIntervalMs: Long = SettingsStore.DEFAULT_INTERVAL_MS,
     val analysisIntervalSec: Int = SettingsStore.DEFAULT_INTERVAL_SEC,
     val isCheckingHealth: Boolean = false,
     val healthStatus: HealthCheckStatus? = null,
@@ -35,6 +36,7 @@ class SettingsViewModel(
     private val _uiState = MutableStateFlow(
         SettingsUiState(
             serverUrlInput = settingsStore.currentBaseUrl,
+            analysisIntervalMs = settingsStore.currentIntervalMs,
             analysisIntervalSec = settingsStore.currentIntervalSec,
             account = repository.currentAccount.value
         )
@@ -47,6 +49,7 @@ class SettingsViewModel(
                 _uiState.update {
                     it.copy(
                         serverUrlInput = settings.serverUrl,
+                        analysisIntervalMs = settings.analysisIntervalMs,
                         analysisIntervalSec = settings.analysisIntervalSec
                     )
                 }
@@ -106,11 +109,16 @@ class SettingsViewModel(
         }
     }
 
-    fun selectInterval(seconds: Int) {
+    fun selectIntervalMs(ms: Long) {
         viewModelScope.launch {
-            settingsStore.saveAnalysisInterval(seconds)
-            _uiState.update { it.copy(analysisIntervalSec = seconds) }
+            settingsStore.saveAnalysisIntervalMs(ms)
+            val sec = (ms / 1000L).toInt().coerceAtLeast(1)
+            _uiState.update { it.copy(analysisIntervalMs = ms, analysisIntervalSec = sec) }
         }
+    }
+
+    fun selectInterval(seconds: Int) {
+        selectIntervalMs(seconds * 1000L)
     }
 
     fun logout(onLoggedOut: () -> Unit) {

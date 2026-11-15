@@ -227,7 +227,7 @@ describe('веб-сканер', () => {
     expect(inspectImageSpy).not.toHaveBeenCalled();
   });
 
-  it('автоматически запускает камеру, распознаёт через 500 мс и обновляет через 1800 мс', async () => {
+  it('автоматически запускает камеру, распознаёт через 300 мс и обновляет через 300 мс (реалтайм)', async () => {
     await startLiveWithTimers();
 
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
@@ -240,17 +240,17 @@ describe('веб-сканер', () => {
     });
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
 
-    await advanceTime(499);
+    await advanceTime(299);
     expect(inspectImageSpy).not.toHaveBeenCalled();
     await advanceTime(1);
     expect(inspectImageSpy).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Трещина корпуса')).toBeInTheDocument();
 
-    await advanceTime(1799);
+    await advanceTime(299);
     expect(inspectImageSpy).toHaveBeenCalledTimes(1);
     await advanceTime(1);
     expect(inspectImageSpy).toHaveBeenCalledTimes(2);
-    await advanceTime(1800);
+    await advanceTime(300);
     expect(inspectImageSpy).toHaveBeenCalledTimes(3);
     expect(screen.queryByRole('button', { name: /Анализировать/i })).not.toBeInTheDocument();
   });
@@ -667,11 +667,11 @@ describe('веб-сканер', () => {
     const pending = deferred<Report>();
     createReportSpy.mockImplementationOnce(() => pending.promise);
     await startLiveWithTimers();
-    await advanceTime(500);
+    await advanceTime(300);
     const result = await inspectImageSpy.mock.results[0].value;
     fireEvent.click(screen.getByRole('button', { name: 'Передать задачу' }));
 
-    await advanceTime(1800);
+    await advanceTime(300);
     expect(inspectImageSpy).toHaveBeenCalledTimes(2);
     const frame = screen.getByRole('button', { name: /^Рамка дефекта: Трещина корпуса, уверенность/i });
     fireEvent.mouseEnter(frame);
@@ -688,7 +688,7 @@ describe('веб-сканер', () => {
     expect(createReportSpy.mock.calls[0][0].status).toBe('open');
     expect(createReportSpy.mock.calls[0][0].assigneeId).toBe('emp-002');
 
-    await advanceTime(1800);
+    await advanceTime(300);
     expect(inspectImageSpy).toHaveBeenCalledTimes(3);
     await act(async () => pending.resolve(savedReport(createReportSpy.mock.calls[0][0])));
     expect(screen.getByText('Задача передана · mock')).toBeInTheDocument();

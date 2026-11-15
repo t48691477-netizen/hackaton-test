@@ -44,7 +44,7 @@ if _cors_origins:
 
 app.add_middleware(
     IngressRateLimitMiddleware,
-    limit=max(1, int(os.getenv("TOIR_INGRESS_RATE_LIMIT", "120"))),
+    limit=max(1, int(os.getenv("TOIR_INGRESS_RATE_LIMIT", "1200"))),
     window_seconds=max(1, int(os.getenv("TOIR_INGRESS_RATE_WINDOW_SECONDS", "60"))),
 )
 

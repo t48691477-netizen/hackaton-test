@@ -38,6 +38,7 @@ data class ScannerUiState(
     val equipmentOptions: List<EquipmentDto> = emptyList(),
     val showCreateReportDialog: Boolean = false,
     val snackbarMessage: String? = null,
+    val analysisIntervalMs: Long = SettingsStore.DEFAULT_INTERVAL_MS,
     val analysisIntervalSec: Int = SettingsStore.DEFAULT_INTERVAL_SEC
 )
 
@@ -63,7 +64,12 @@ class ScannerViewModel(
     init {
         viewModelScope.launch {
             settingsStore.settingsFlow.collect { settings ->
-                _uiState.update { it.copy(analysisIntervalSec = settings.analysisIntervalSec) }
+                _uiState.update {
+                    it.copy(
+                        analysisIntervalMs = settings.analysisIntervalMs,
+                        analysisIntervalSec = settings.analysisIntervalSec
+                    )
+                }
             }
         }
     }
@@ -168,7 +174,7 @@ class ScannerViewModel(
         val state = _uiState.value
         if (!state.isAnalyzing || state.equipment?.id.isNullOrBlank()) return false
         val now = SystemClock.elapsedRealtime()
-        val intervalMs = state.analysisIntervalSec * 1000L
+        val intervalMs = state.analysisIntervalMs
         if (lastInspectCompletedAtMs != 0L && now - lastInspectCompletedAtMs < intervalMs) {
             return false
         }

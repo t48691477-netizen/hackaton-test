@@ -130,6 +130,8 @@
     <string name="settings_check_health">Проверить</string>
     <string name="settings_health_ok">Сервер доступен</string>
     <string name="settings_interval_section">Интервал видеоанализа</string>
+    <string name="settings_interval_realtime">300 мс (реалтайм)</string>
+    <string name="settings_interval_half_s">0.5 сек</string>
     <string name="settings_interval_1s">1 сек</string>
     <string name="settings_interval_2s">2 сек</string>
     <string name="settings_interval_3s">3 сек</string>

@@ -63,8 +63,8 @@ interface Snapshot {
   height: number;
 }
 
-const DETECTION_INTERVAL_MS = 1800;
-const FIRST_DETECTION_MS = 500;
+const DETECTION_INTERVAL_MS = 300;
+const FIRST_DETECTION_MS = 300;
 
 const STATUS_META: Record<
   ScannerStatus,
@@ -1426,7 +1426,7 @@ function LiveReport({
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-faint">
           <span>обработка {analysis.meta.processing_ms} мс</span>
-          <span>обновление ~{DETECTION_INTERVAL_MS / 1000} с</span>
+          <span>обновление ~{(DETECTION_INTERVAL_MS / 1000).toFixed(1)} с</span>
         </div>
 
         <p className="mt-3 text-xs leading-4 text-faint">
@@ -1825,18 +1825,26 @@ export function Scanner() {
       }
 
       const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      const maxDim = 640;
+      let targetW = video.videoWidth;
+      let targetH = video.videoHeight;
+      if (Math.max(targetW, targetH) > maxDim) {
+        const scale = maxDim / Math.max(targetW, targetH);
+        targetW = Math.round(targetW * scale);
+        targetH = Math.round(targetH * scale);
+      }
+      canvas.width = targetW;
+      canvas.height = targetH;
       const context = canvas.getContext('2d');
 
       if (!context) {
         return null;
       }
 
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      context.drawImage(video, 0, 0, targetW, targetH);
 
       return new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.85);
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.7);
       });
     };
 
@@ -2189,9 +2197,9 @@ export function Scanner() {
                 {liveError
                   ? liveError
                   : status === 'live'
-                  ? `Распознавание идёт автоматически · обновление ~${
+                  ? `Распознавание идёт автоматически · обновление ~${(
                       DETECTION_INTERVAL_MS / 1000
-                    } с`
+                    ).toFixed(1)} с`
                   : status === 'ready'
                     ? analysis
                       ? 'Снимок распознан автоматически. Выберите дефект, чтобы открыть характеристики.'

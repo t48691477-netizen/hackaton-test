@@ -14,8 +14,8 @@ data class CapturedFrame(
 )
 
 object ImageUtils {
-    private const val MAX_LONG_SIDE_PX = 960
-    private const val JPEG_QUALITY = 80
+    private const val MAX_LONG_SIDE_PX = 640
+    private const val JPEG_QUALITY = 70
 
     fun imageProxyToCapturedFrame(imageProxy: ImageProxy): CapturedFrame {
         val rotationDegrees = imageProxy.imageInfo.rotationDegrees

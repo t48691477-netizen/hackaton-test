@@ -186,22 +186,23 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     val intervals = listOf(
-                        1 to stringResource(R.string.settings_interval_1s),
-                        2 to stringResource(R.string.settings_interval_2s),
-                        3 to stringResource(R.string.settings_interval_3s)
+                        300L to stringResource(R.string.settings_interval_realtime),
+                        500L to stringResource(R.string.settings_interval_half_s),
+                        1000L to stringResource(R.string.settings_interval_1s),
+                        2000L to stringResource(R.string.settings_interval_2s)
                     )
-                    intervals.forEach { (sec, label) ->
-                        val selected = uiState.analysisIntervalSec == sec
+                    intervals.forEach { (ms, label) ->
+                        val selected = uiState.analysisIntervalMs == ms
                         FilterChip(
                             selected = selected,
-                            onClick = { viewModel.selectInterval(sec) },
+                            onClick = { viewModel.selectIntervalMs(ms) },
                             label = {
                                 Text(
                                     text = label,
-                                    style = MaterialTheme.typography.labelLarge
+                                    style = MaterialTheme.typography.labelSmall
                                 )
                             },
                             shape = CircleShape,
@@ -219,8 +220,8 @@ fun SettingsScreen(
                             ),
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .testTag("interval_chip_$sec")
+                                .heightIn(min = 44.dp)
+                                .testTag("interval_chip_$ms")
                         )
                     }
                 }

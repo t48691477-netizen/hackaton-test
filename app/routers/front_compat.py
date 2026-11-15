@@ -1,9 +1,11 @@
 """Совместимый с React-фронтом (frontend-test) API. Монтируется на /front, не ломает Android-контракт."""
 import json
+import os
 import shutil
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -172,9 +174,11 @@ try:
     import torch
     if torch.cuda.is_available():
         _HALF, _DEV = True, 0
+    else:
+        torch.set_num_threads(min(4, os.cpu_count() or 4))
 except Exception:
     pass
-IMGSZ = 960
+IMGSZ = 640
 _infer_lock = threading.Lock()
 _oil_model = None
 _unified_model = None
@@ -268,7 +272,14 @@ def warm_up():
 
 def _run(model, img, conf, kind, skip, node_id):
     onnx = model is _unified_model
-    r = model.predict(img, conf=conf, imgsz=IMGSZ, half=False if onnx else _HALF, device="cpu" if onnx else _DEV, verbose=False, max_det=15)[0]
+    try:
+        import torch
+        ctx = torch.inference_mode()
+    except Exception:
+        from contextlib import nullcontext
+        ctx = nullcontext()
+    with ctx:
+        r = model.predict(img, conf=conf, imgsz=IMGSZ, half=False if onnx else _HALF, device="cpu" if onnx else _DEV, verbose=False, max_det=15)[0]
     if r.boxes is None or len(r.boxes) == 0:
         return []
     bx = r.boxes.xyxyn.cpu().numpy()
@@ -330,17 +341,25 @@ def inspect(file: UploadFile = File(...), equipment_id: str = Form(...)):
     eq = _eq_cached(equipment_id)
     node_id = eq.components[0].id if eq and eq.components else None
     corr, weld, oil = _models()
-    out = []
+    tasks = []
     uni = _unified()
+    if uni is not None:
+        tasks.append((uni, img, 0.20, None, set(), node_id))
+    if corr is not None:
+        tasks.append((corr, img, 0.20, "corrosion", {"car"}, node_id))
+    if weld is not None:
+        tasks.append((weld, img, 0.20, "crack", {"Good Weld"}, node_id))
+    if oil is not None:
+        tasks.append((oil, img, 0.20, "oil", set(), node_id))
+
+    out = []
     with _infer_lock:
-        if uni is not None:
-            out += _run(uni, img, 0.20, None, set(), node_id)
-        if corr is not None:
-            out += _run(corr, img, 0.20, "corrosion", {"car"}, node_id)
-        if weld is not None:
-            out += _run(weld, img, 0.20, "crack", {"Good Weld"}, node_id)
-        if oil is not None:
-            out += _run(oil, img, 0.20, "oil", set(), node_id)
+        if len(tasks) > 1:
+            with ThreadPoolExecutor(max_workers=min(4, len(tasks))) as ex:
+                for res in ex.map(lambda args: _run(*args), tasks):
+                    out += res
+        elif len(tasks) == 1:
+            out += _run(*tasks[0])
     out = _dedup_defects(out)
     mx = lambda k: max([d["confidence"] for d in out if d["source_model"] == k], default=0.0)
     crit = max((d["severity"] for d in out), key=lambda v: _SEV_RANK[v], default="low")

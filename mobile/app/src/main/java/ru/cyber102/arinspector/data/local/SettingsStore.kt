@@ -20,7 +20,8 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
 
 data class AppSettings(
     val serverUrl: String = SettingsStore.DEFAULT_SERVER_URL,
-    val analysisIntervalSec: Int = SettingsStore.DEFAULT_INTERVAL_SEC
+    val analysisIntervalMs: Long = SettingsStore.DEFAULT_INTERVAL_MS,
+    val analysisIntervalSec: Int = (analysisIntervalMs / 1000L).toInt().coerceAtLeast(1)
 )
 
 class SettingsStore(context: Context) {
@@ -33,15 +34,22 @@ class SettingsStore(context: Context) {
         private set
 
     @Volatile
-    var currentIntervalSec: Int = DEFAULT_INTERVAL_SEC
+    var currentIntervalMs: Long = DEFAULT_INTERVAL_MS
+        private set
+
+    @Volatile
+    var currentIntervalSec: Int = 1
         private set
 
     val settingsFlow: Flow<AppSettings> = dataStore.data.map { prefs ->
         val url = normalizeUrl(prefs[KEY_SERVER_URL] ?: DEFAULT_SERVER_URL)
-        val interval = (prefs[KEY_INTERVAL_SEC] ?: DEFAULT_INTERVAL_SEC).coerceIn(1, 3)
+        val intervalMs = (prefs[KEY_INTERVAL_MS]?.toLong()
+            ?: prefs[KEY_INTERVAL_SEC]?.let { it * 1000L }
+            ?: DEFAULT_INTERVAL_MS).coerceIn(200L, 5000L)
         currentBaseUrl = url
-        currentIntervalSec = interval
-        AppSettings(serverUrl = url, analysisIntervalSec = interval)
+        currentIntervalMs = intervalMs
+        currentIntervalSec = (intervalMs / 1000L).toInt().coerceAtLeast(1)
+        AppSettings(serverUrl = url, analysisIntervalMs = intervalMs, analysisIntervalSec = currentIntervalSec)
     }
 
     init {
@@ -59,19 +67,27 @@ class SettingsStore(context: Context) {
         return normalized
     }
 
-    suspend fun saveAnalysisInterval(seconds: Int) {
-        val clamped = seconds.coerceIn(1, 3)
-        currentIntervalSec = clamped
+    suspend fun saveAnalysisIntervalMs(ms: Long) {
+        val clamped = ms.coerceIn(200L, 5000L)
+        currentIntervalMs = clamped
+        currentIntervalSec = (clamped / 1000L).toInt().coerceAtLeast(1)
         dataStore.edit { prefs ->
-            prefs[KEY_INTERVAL_SEC] = clamped
+            prefs[KEY_INTERVAL_MS] = clamped.toInt()
+            prefs[KEY_INTERVAL_SEC] = currentIntervalSec
         }
+    }
+
+    suspend fun saveAnalysisInterval(seconds: Int) {
+        saveAnalysisIntervalMs(seconds * 1000L)
     }
 
     companion object {
         const val DEFAULT_SERVER_URL = "http://10.0.2.2:8000/"
-        const val DEFAULT_INTERVAL_SEC = 2
+        const val DEFAULT_INTERVAL_MS = 300L
+        const val DEFAULT_INTERVAL_SEC = 1
 
         private val KEY_SERVER_URL = stringPreferencesKey("server_url")
+        private val KEY_INTERVAL_MS = intPreferencesKey("analysis_interval_ms")
         private val KEY_INTERVAL_SEC = intPreferencesKey("analysis_interval_sec")
 
         fun normalizeUrl(raw: String): String {
